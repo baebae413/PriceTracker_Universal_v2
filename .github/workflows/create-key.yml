@@ -21,12 +21,12 @@ jobs:
             -keypass pricetracker123 \
             -dname "CN=PriceTracker, OU=Apps, O=PriceTracker, L=Unknown, ST=Unknown, C=RU"
 
-      - - name: Encode keystore
-  run: |
-    base64 -w 0 pricetracker.keystore > keystore.txt
+      - name: Encode keystore
+        run: |
+          base64 -w 0 pricetracker.keystore > keystore.txt
 
-- name: Upload encoded key
-  uses: actions/upload-artifact@v4
-  with:
-    name: keystore-base64
-    path: keystore.txt
+      - name: Upload encoded key
+        uses: actions/upload-artifact@v4
+        with:
+          name: keystore-base64
+          path: keystore.txt
