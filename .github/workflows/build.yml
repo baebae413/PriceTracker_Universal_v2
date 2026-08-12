@@ -26,21 +26,16 @@ jobs:
         with:
           gradle-version: '9.5.0'
 
-      -  - name: Decode keystore
-    run: |
-      echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > pricetracker.keystore
+      - name: Decode keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > pricetracker.keystore
 
-  - name: Check keystore
-    run: |
-      echo "Проверяем файл:"
-      ls -la pricetracker.keystore
-      echo "Размер:"
-      wc -c pricetracker.keystore
       - name: Check keystore
         run: |
-          pwd
-          ls -la
+          echo "Проверяем файл:"
           ls -la pricetracker.keystore
+          echo "Размер:"
+          wc -c pricetracker.keystore
 
       - name: Build APK
         run: gradle assembleRelease
