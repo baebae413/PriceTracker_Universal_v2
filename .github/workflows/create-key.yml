@@ -1,0 +1,28 @@
+name: Create signing key
+
+on:
+  workflow_dispatch:
+
+jobs:
+  key:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Create keystore
+        run: |
+          keytool -genkeypair \
+            -v \
+            -keystore pricetracker.keystore \
+            -alias pricetracker \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -storepass pricetracker123 \
+            -keypass pricetracker123 \
+            -dname "CN=PriceTracker, OU=Apps, O=PriceTracker, L=Unknown, ST=Unknown, C=RU"
+
+      - name: Upload keystore
+        uses: actions/upload-artifact@v4
+        with:
+          name: pricetracker-keystore
+          path: pricetracker.keystore
