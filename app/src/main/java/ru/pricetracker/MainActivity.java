@@ -7,6 +7,9 @@ import android.view.*;
 import android.widget.*;
 import java.util.*;
 import java.util.concurrent.*;
+import android.content.Intent;
+import android.net.Uri;
+import android.graphics.Paint;
 
 public class MainActivity extends Activity {
     PriceDb db;
@@ -156,8 +159,21 @@ public class MainActivity extends Activity {
             name.setTextColor(Color.BLACK);
 
             TextView site = new TextView(this);
-            site.setText(p.url);
-            site.setTextSize(11);
+site.setText(p.url);
+site.setTextSize(11);
+
+site.setTextColor(Color.BLUE);
+site.setPaintFlags(site.getPaintFlags() | Paint.UNDERLINE_TEXT_FLAG);
+
+site.setOnClickListener(v -> {
+    try {
+        Intent intent = new Intent(Intent.ACTION_VIEW);
+        intent.setData(Uri.parse(p.url));
+        startActivity(intent);
+    } catch (Exception e) {
+        toast("Не удалось открыть ссылку");
+    }
+});
 
             TextView price = new TextView(this);
             String arrow = "";
