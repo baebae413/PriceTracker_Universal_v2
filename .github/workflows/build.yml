@@ -30,6 +30,12 @@ jobs:
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > pricetracker.keystore
 
+      - name: Check keystore
+        run: |
+          pwd
+          ls -la
+          ls -la pricetracker.keystore
+
       - name: Build APK
         run: gradle assembleRelease
 
