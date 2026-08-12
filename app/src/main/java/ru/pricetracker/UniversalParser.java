@@ -173,18 +173,33 @@ public class UniversalParser {
     }
 
     private static void addPrices(String s, List<Double> out) {
-        if (s == null) return;
-        Matcher m = Pattern.compile(
-            "(?<![\\d])([0-9]{2,7}(?:[ .][0-9]{3})?(?:[.,][0-9]{1,2})?)\\s*(?:₽|руб\\.?|RUB)(?![\\d])",
-            Pattern.CASE_INSENSITIVE).matcher(s);
-        while (m.find() && out.size() < 200) {
-            String x = m.group(1).replace(" ","").replace(".","");
-            out.add(num(x));
-        }
-        Matcher m2 = Pattern.compile(
-            "(?:цена|price|salePrice|currentPrice)[^0-9]{0,100}([0-9]{2,7}(?:[.,][0-9]{1,2})?)",
-            Pattern.CASE_INSENSITIVE).matcher(s);
-        while (m2.find() && out.size() < 200) out.add(num(m2.group(1)));
+    if (s == null) return;
+
+    // Цены рядом с валютой: 2756 ₽, 12 990 руб
+    Matcher m = Pattern.compile(
+        "(?<!\\d)(\\d{1,3}(?:[\\s.]?\\d{3})*(?:[.,]\\d{1,2})?)\\s*(?:₽|руб\\.?|RUB)",
+        Pattern.CASE_INSENSITIVE
+    ).matcher(s);
+
+    while (m.find() && out.size() < 200) {
+        String x = m.group(1)
+                .replace(" ", "")
+                .replace(".", "");
+
+        out.add(num(x));
+    }
+
+
+    // JSON / HTML цены:
+    // price:2756
+    // currentPrice":2756
+    Matcher m2 = Pattern.compile(
+        "(?:цена|price|salePrice|currentPrice)\\s*[\":= ]+\\s*([0-9]{1,7}(?:[.,][0-9]{1,2})?)",
+        Pattern.CASE_INSENSITIVE
+    ).matcher(s);
+
+    while (m2.find() && out.size() < 200) {
+        out.add(num(m2.group(1)));
     }
 
     private static double num(String s) {
