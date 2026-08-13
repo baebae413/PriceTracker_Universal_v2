@@ -383,6 +383,8 @@ public class MainActivity extends Activity {
         site.setOnClickListener(
                 v -> openUrl(p.url)
         );
+        
+        site.setOnLongClickListener(v -> true);
 
         /*
          * Кнопка истории
@@ -713,10 +715,7 @@ public class MainActivity extends Activity {
                     "Не удалось открыть ссылку"
             );
         }
-    }
-site.setFocusable(false);
-site.setOnLongClickListener(v -> true);
-
+    
     private String formatPrice(double p) {
 
         if (Math.abs(
