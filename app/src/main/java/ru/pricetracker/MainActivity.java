@@ -714,6 +714,8 @@ public class MainActivity extends Activity {
             );
         }
     }
+site.setFocusable(false);
+site.setOnLongClickListener(v -> true);
 
     private String formatPrice(double p) {
 
