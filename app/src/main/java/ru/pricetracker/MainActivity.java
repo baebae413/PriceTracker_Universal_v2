@@ -715,6 +715,7 @@ public class MainActivity extends Activity {
                     "Не удалось открыть ссылку"
             );
         }
+        }
     
     private String formatPrice(double p) {
 
