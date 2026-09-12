@@ -2,10 +2,13 @@ package ru.pricetracker;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
@@ -17,15 +20,25 @@ import java.util.List;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
+    public static final String CHANNEL_ID = "price_tracker";
     private PriceDb db;
     private LinearLayout list;
     private TextView summary;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        createNotificationChannel();
         db = new PriceDb(this);
         buildUi();
         refresh();
+    }
+
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Изменения цен", NotificationManager.IMPORTANCE_DEFAULT);
+            NotificationManager nm = getSystemService(NotificationManager.class);
+            if (nm != null) nm.createNotificationChannel(channel);
+        }
     }
 
     private TextView text(String s, float size, int color) {
