@@ -4,246 +4,155 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
-import android.webkit.*;
-import java.util.*;
-import java.util.regex.*;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
-/**
- * Browser-based product parser.
- * It loads the real page in Android WebView and then inspects the rendered DOM,
- * JSON-LD and meta tags. This is much more suitable for modern JS-heavy stores.
- */
+/** Loads the store page in a WebView and extracts the product price. */
 public class UniversalParser {
     public static class Result {
         public String name = "";
-        public double price = -1;
-        public double oldPrice = -1;
         public String site = "";
+        public double price = -1;
     }
-
-    public interface Callback {
-        void success(Result r);
-        void error(Exception e);
-    }
+    public interface Callback { void success(Result result); void error(Exception error); }
 
     private final Context context;
     private final Handler main = new Handler(Looper.getMainLooper());
     private WebView webView;
-    private boolean busy = false;
+    private boolean busy;
 
-    public UniversalParser(Context context) {
-        this.context = context.getApplicationContext();
-    }
+    public UniversalParser(Context context) { this.context = context; }
 
     @SuppressLint("SetJavaScriptEnabled")
     public void product(String url, Callback callback) {
         main.post(() -> {
-            if (busy) {
-                callback.error(new Exception("Парсер занят"));
-                return;
-            }
+            if (busy) { callback.error(new Exception("Парсер занят")); return; }
             busy = true;
-            webView = new WebView(context);
-            webView.getSettings().setJavaScriptEnabled(true);
-            webView.getSettings().setDomStorageEnabled(true);
-            webView.getSettings().setDatabaseEnabled(true);
-            webView.getSettings().setUserAgentString(
-                "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 " +
-                "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36");
-            webView.setWebViewClient(new WebViewClient() {
-                @Override public void onPageFinished(WebView view, String loadedUrl) {
-                    // Modern stores often render price asynchronously. Give them time.
-                    main.postDelayed(() -> extract(url, callback), 5000);
-                }
-                @Override public void onReceivedError(WebView view, int errorCode,
-                                                      String description, String failingUrl) {
-                    finish();
-                    callback.error(new Exception("Не удалось открыть страницу: " + description));
-                }
-            });
-            webView.loadUrl(url);
-            main.postDelayed(() -> {
-                if (busy) {
-                    finish();
-                    callback.error(new Exception("Страница загружается слишком долго"));
-                }
-            }, 20000);
+            try {
+                webView = new WebView(context);
+                webView.getSettings().setJavaScriptEnabled(true);
+                webView.getSettings().setDomStorageEnabled(true);
+                webView.getSettings().setDatabaseEnabled(true);
+                webView.getSettings().setUserAgentString("Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36");
+                webView.setWebViewClient(new WebViewClient() {
+                    @Override public void onPageFinished(WebView view, String loadedUrl) { main.postDelayed(() -> extract(url, callback), 4500); }
+                    @Override public void onReceivedError(WebView view, int code, String description, String failingUrl) { fail(callback, "Не удалось открыть страницу: " + description); }
+                });
+                webView.loadUrl(url);
+                main.postDelayed(() -> { if (busy) fail(callback, "Страница загружается слишком долго"); }, 25000);
+            } catch (Exception e) { fail(callback, e.getMessage() == null ? "Не удалось создать WebView" : e.getMessage()); }
         });
     }
 
     private void extract(String originalUrl, Callback callback) {
         if (!busy || webView == null) return;
-        String js =
-            "(function(){" +
-            "return JSON.stringify({" +
-            "title:document.title," +
-            "text:(document.body?document.body.innerText:'')," +
-            "html:(document.documentElement?document.documentElement.outerHTML:'')" +
-            "});" +
-            "})()";
+        String js = "(function(){" +
+                "var q=function(s){var e=document.querySelector(s);return e?(e.content||e.getAttribute('content')||e.innerText||''):''};" +
+                "var first=function(s){var e=document.querySelector(s);return e?(e.innerText||e.textContent||''):''};" +
+                "var ld=[];document.querySelectorAll('script[type=\\\"application/ld+json\\\"]').forEach(function(e){ld.push(e.textContent)});" +
+                "return JSON.stringify({title:document.title,body:document.body?document.body.innerText:'',html:document.documentElement?document.documentElement.outerHTML:'',metaPrice:q('meta[property=\\\"product:price:amount\\\"]'),itemPrice:q('[itemprop=\\\"price\\\"]'),ozonPrice:first('[data-widget=\\\"webPrice\\\"] span'),ld:ld});" +
+                "})()";
         webView.evaluateJavascript(js, value -> {
             try {
                 String raw = unquote(value);
-                Result r = parse(raw, originalUrl);
-                if (r.price < 0) throw new Exception("Цена не найдена на странице");
-                if (r.name == null || r.name.trim().isEmpty()) r.name = domain(originalUrl);
-                finish();
-                callback.success(r);
-            } catch (Exception e) {
-                finish();
-                callback.error(e);
-            }
+                Result result = parse(raw, originalUrl);
+                if (result.price < 0) throw new Exception("Цена товара не найдена");
+                if (result.name.trim().isEmpty()) result.name = domain(originalUrl);
+                finish(); callback.success(result);
+            } catch (Exception e) { finish(); callback.error(e); }
         });
     }
 
     private Result parse(String data, String url) {
-        Result r = new Result();
-        r.site = domain(url);
-        String title = field(data, "title");
-        String text = field(data, "text");
-        String html = field(data, "html");
+        Result r = new Result(); r.site = domain(url);
+        String title = field(data, "title"), body = field(data, "body"), html = field(data, "html");
+        String metaPrice = field(data, "metaPrice"), itemPrice = field(data, "itemPrice"), ozonPrice = field(data, "ozonPrice"), ld = field(data, "ld");
+        String name = firstNonEmpty(jsonString(ld, "name"), jsonString(html, "name"), title.replaceAll("\\s*[|–—-]\\s*.*$", "").trim());
+        r.name = clean(name);
 
-        // 1) Product JSON-LD. Prefer offers.price.
-        List<Double> jsonPrices = new ArrayList<>();
-        Matcher pm = Pattern.compile(
-            "(?:\"price\"\\s*:\\s*\"?)([0-9]{1,7}(?:[.,][0-9]{1,2})?)",
-            Pattern.CASE_INSENSITIVE).matcher(html);
-        while (pm.find() && jsonPrices.size() < 50) jsonPrices.add(num(pm.group(1)));
-
-        Matcher nm = Pattern.compile(
-            "\"name\"\\s*:\\s*\"([^\"]{2,300})\"", Pattern.CASE_INSENSITIVE).matcher(html);
-        if (nm.find()) r.name = decode(nm.group(1));
-
-        // 2) Site-specific and generic price candidates from visible text.
-        ArrayList<Double> candidates = new ArrayList<>();
-        addPrices(text, candidates);
-        addPrices(html.replaceAll("<script.*?</script>", " "), candidates);
-        candidates.addAll(jsonPrices);
-
-        // Remove absurd candidates and choose the most plausible price.
-        candidates.removeIf(v -> v < 1 || v > 100000000);
-        LinkedHashSet<String> seen = new LinkedHashSet<>();
-        ArrayList<Double> unique = new ArrayList<>();
-        for (Double v : candidates) {
-            String key = String.format(Locale.US, "%.2f", v);
-            if (seen.add(key)) unique.add(v);
+        // Ozon puts the actual visible current price into the webPrice widget.
+        // Read that widget before scanning the whole page, because descriptions
+        // and characteristics can contain unrelated amounts such as "Баланс 1700 руб.".
+        if (isOzon(url)) {
+            double p = priceFromText(ozonPrice);
+            if (p >= 1 && p <= 100000000) r.price = p;
         }
 
-        // For product pages, JSON-LD price is usually the strongest signal.
-        if (!jsonPrices.isEmpty()) {
-            for (Double v : jsonPrices) {
-                if (v >= 1 && v <= 100000000) { r.price = v; break; }
-            }
-        }
-        if (r.price < 0 && !unique.isEmpty()) {
-            r.price = choosePrice(unique, text, url);
-        }
-
-        // A conservative old-price guess: a larger candidate near the current one.
-        if (r.price > 0) {
-            for (Double v : unique) {
-                if (v > r.price && v <= r.price * 5.0) {
-                    if (r.oldPrice < 0 || v < r.oldPrice) r.oldPrice = v;
-                }
-            }
-        }
-
-        if (r.name == null || r.name.isEmpty()) {
-            r.name = title == null ? "" : title.replaceAll("\\s*[|–-]\\s*.*$", "").trim();
-        }
+        double p = num(metaPrice); if (r.price < 0 && p >= 1 && p <= 100000000) r.price = p;
+        p = num(itemPrice); if (r.price < 0 && p >= 1 && p <= 100000000) r.price = p;
+        if (r.price < 0) { p = structuredOfferPrice(ld); if (p >= 1 && p <= 100000000) r.price = p; }
+        if (r.price < 0) { List<Double> candidates = new ArrayList<>(); addCurrencyPrices(body, candidates); r.price = chooseVisiblePrice(candidates, body); }
+        if (r.price < 0) r.price = labeledPrice(html);
         return r;
     }
 
-    private static double choosePrice(List<Double> a, String text, String url) {
-        String lower = text.toLowerCase(Locale.ROOT);
-        // Prefer candidates occurring close to currency symbols/price labels.
-        for (Double v : a) {
-            String s = format(v);
-            int idx = lower.indexOf(s.replace(".0",""));
-            if (idx >= 0) {
-                int end = Math.min(lower.length(), idx + 100);
-                String near = lower.substring(Math.max(0,idx-80), end);
-                if (near.contains("₽") || near.contains("руб") ||
-                    near.contains("цена") || near.contains("price")) return v;
-            }
+    private static boolean isOzon(String url) {
+        return url != null && url.toLowerCase(Locale.ROOT).contains("ozon.");
+    }
+
+    private static double priceFromText(String text) {
+        if (text == null || text.trim().isEmpty()) return -1;
+        // The first price in Ozon's webPrice span is the current visible price.
+        Matcher m = Pattern.compile("(?<!\\d)(\\d{1,3}(?:(?:[\\s\\u00A0\\u202F.]\\s*)\\d{3})+|\\d+)(?:[.,]\\d{1,2})?\\s*(?:₽|руб(?:лей|ля)?\\.?|RUB)", Pattern.CASE_INSENSITIVE).matcher(text);
+        if (m.find()) {
+            String raw = m.group(1).replaceAll("[\\s\\u00A0\\u202F.]", "");
+            return num(raw);
         }
-        // Avoid likely installment amounts and tiny recommendation prices.
-        for (Double v : a) if (v >= 50) return v;
-        return a.get(0);
+        return -1;
     }
 
-    private static void addPrices(String s, List<Double> out) {
-    if (s == null) return;
-
-    Matcher m = Pattern.compile(
-        "(?<!\\d)(\\d{1,3}(?:[\\s.]\\d{3})+|\\d+)(?:[.,]\\d{1,2})?\\s*(?:₽|руб\\.?|RUB)",
-        Pattern.CASE_INSENSITIVE
-    ).matcher(s);
-
-    while (m.find() && out.size() < 200) {
-        String x = m.group(1)
-                .replace(" ", "")
-                .replace(".", "");
-
-        out.add(num(x));
+    private static double structuredOfferPrice(String s) {
+        if (s == null) return -1;
+        Matcher offer = Pattern.compile("\\\"offers\\\"\\s*:\\s*\\{(.{0,3000}?)\\}", Pattern.CASE_INSENSITIVE | Pattern.DOTALL).matcher(s);
+        while (offer.find()) { String block = offer.group(1); double p = jsonNumber(block, "price"); if (p < 0) p = jsonNumber(block, "lowPrice"); if (p >= 1 && p <= 100000000) return p; }
+        return -1;
     }
 
-
-    Matcher m2 = Pattern.compile(
-        "(?:цена|price|salePrice|currentPrice)[^0-9]{0,100}(\\d{1,3}(?:[\\s.]\\d{3})+|\\d+)",
-        Pattern.CASE_INSENSITIVE
-    ).matcher(s);
-
-
-    while (m2.find() && out.size() < 200) {
-        String x = m2.group(1)
-                .replace(" ", "")
-                .replace(".", "");
-
-        out.add(num(x));
-    }
-}
-
-    private static double num(String s) {
-        try { return Double.parseDouble(s.replace(" ","").replace(",", ".")); }
-        catch(Exception e){ return -1; }
-    }
-    private static String format(double d){ return String.valueOf((long)d); }
-
-    private static String field(String json, String key) {
-        Matcher m = Pattern.compile("\""+key+"\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"",
-            Pattern.DOTALL).matcher(json);
-        return m.find() ? decode(m.group(1)) : "";
+    private static double labeledPrice(String s) {
+        Matcher m = Pattern.compile("(?:price|salePrice|currentPrice|sellingPrice|\\\"price\\\")\\s*[:=]\\s*\\\"?([0-9]{1,9}(?:[.,][0-9]{1,2})?)", Pattern.CASE_INSENSITIVE).matcher(s == null ? "" : s);
+        while (m.find()) { double p = num(m.group(1)); if (p >= 1 && p <= 100000000) return p; }
+        return -1;
     }
 
-    private static String unquote(String s) {
-        if (s == null) return "";
-        if (s.startsWith("\"") && s.endsWith("\"")) {
-            s = s.substring(1, s.length()-1);
-            s = s.replace("\\\"", "\"").replace("\\\\", "\\")
-                 .replace("\\n","\n").replace("\\r","\r").replace("\\t","\t");
-        }
-        return s;
-    }
-
-    private static String decode(String s) {
-        if (s == null) return "";
-        return s.replace("\\u002F","/").replace("\\u0026","&")
-                .replace("\\u003C","<").replace("\\u003E",">")
-                .replace("\\u0022","\"").replace("\\\\\"","\"");
-    }
-
-    private static String domain(String url) {
-        try { return new java.net.URL(url).getHost(); }
-        catch(Exception e){ return url; }
-    }
-
-    private void finish() {
-        busy = false;
-        if (webView != null) {
-            webView.stopLoading();
-            webView.destroy();
-            webView = null;
+    private static void addCurrencyPrices(String text, List<Double> out) {
+        if (text == null) return;
+        // Handles 1234, 12 345, 12\u00A0345, 12\u202F345 and 12.345 ₽.
+        Matcher m = Pattern.compile("(?<!\\d)(\\d{1,3}(?:(?:[\\s\\u00A0\\u202F.]\\s*)\\d{3})+|\\d+)(?:[.,]\\d{1,2})?\\s*(?:₽|руб(?:лей|ля)?\\.?|RUB)", Pattern.CASE_INSENSITIVE).matcher(text);
+        while (m.find() && out.size() < 100) {
+            String raw = m.group(1).replaceAll("[\\s\\u00A0\\u202F.]", "");
+            double p = num(raw);
+            if (p >= 5 && p <= 100000000) out.add(p);
         }
     }
+
+    private static double chooseVisiblePrice(List<Double> candidates, String body) {
+        if (candidates.isEmpty()) return -1;
+        String lower = body == null ? "" : body.toLowerCase(Locale.ROOT);
+        for (double p : candidates) {
+            String n = String.valueOf((long) p); int from = lower.indexOf(n);
+            if (from >= 0) { int a = Math.max(0, from - 100), b = Math.min(lower.length(), from + n.length() + 100); String near = lower.substring(a, b); if (near.contains("цена") || near.contains("стоимость") || near.contains("заказ") || near.contains("купить") || near.contains("итого") || near.contains("скид")) return p; }
+        }
+        return candidates.get(0);
+    }
+
+    private static double jsonNumber(String s, String key) {
+        Matcher m = Pattern.compile("\\\"" + Pattern.quote(key) + "\\\"\\s*:\\s*\\\"?([0-9]{1,9}(?:[.,][0-9]{1,2})?)", Pattern.CASE_INSENSITIVE).matcher(s == null ? "" : s);
+        return m.find() ? num(m.group(1)) : -1;
+    }
+    private static String jsonString(String s, String key) { Matcher m = Pattern.compile("\\\"" + Pattern.quote(key) + "\\\"\\s*:\\s*\\\"((?:\\\\.|[^\\\"\\\\])*)\\\"", Pattern.CASE_INSENSITIVE | Pattern.DOTALL).matcher(s == null ? "" : s); return m.find() ? decode(m.group(1)) : ""; }
+    private static String firstNonEmpty(String... values) { for (String s : values) if (s != null && !s.trim().isEmpty()) return s; return ""; }
+    private static String clean(String s) { return s == null ? "" : decode(s).replaceAll("\\s+", " ").trim(); }
+    private static double num(String s) { try { if (s == null || s.trim().isEmpty()) return -1; return Double.parseDouble(s.trim().replaceAll("[\\s\\u00A0\\u202F]", "").replace(",", ".")); } catch (Exception e) { return -1; } }
+    private static String field(String json, String key) { Matcher m = Pattern.compile("\\\"" + Pattern.quote(key) + "\\\"\\s*:\\s*\\\"((?:\\\\.|[^\\\"\\\\])*)\\\"", Pattern.DOTALL).matcher(json == null ? "" : json); return m.find() ? decode(m.group(1)) : ""; }
+    private static String unquote(String s) { if (s == null) return ""; if (s.startsWith("\"") && s.endsWith("\"")) { s = s.substring(1, s.length() - 1); s = s.replace("\\\"", "\"").replace("\\\\", "\\").replace("\\n", "\n").replace("\\r", "\r").replace("\\t", "\t"); } return s; }
+    private static String decode(String s) { if (s == null) return ""; return s.replace("\\u002F", "/").replace("\\u0026", "&").replace("\\u003C", "<").replace("\\u003E", ">").replace("\\u0022", "\""); }
+    private static String domain(String url) { try { return new URL(url).getHost(); } catch (Exception e) { return url; } }
+    private void fail(Callback callback, String message) { finish(); callback.error(new Exception(message)); }
+    private void finish() { busy = false; if (webView != null) { webView.stopLoading(); webView.destroy(); webView = null; } }
 }
