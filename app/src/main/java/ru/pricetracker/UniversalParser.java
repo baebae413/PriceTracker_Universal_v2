@@ -8,14 +8,12 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import java.net.URL;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Loads the real store page in WebView and extracts the product price. */
+/** Loads the store page in a WebView and extracts the product price. */
 public class UniversalParser {
     public static class Result {
         public String name = "";
@@ -34,7 +32,9 @@ public class UniversalParser {
     private boolean busy;
 
     public UniversalParser(Context context) {
-        this.context = context.getApplicationContext();
+        // Keep the Activity context for WebView. WebView cannot safely be created
+        // from an application-only context on many Android versions.
+        this.context = context;
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -45,25 +45,29 @@ public class UniversalParser {
                 return;
             }
             busy = true;
-            webView = new WebView(context);
-            webView.getSettings().setJavaScriptEnabled(true);
-            webView.getSettings().setDomStorageEnabled(true);
-            webView.getSettings().setDatabaseEnabled(true);
-            webView.getSettings().setUserAgentString(
-                    "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 " +
-                    "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36");
-            webView.setWebViewClient(new WebViewClient() {
-                @Override public void onPageFinished(WebView view, String loadedUrl) {
-                    main.postDelayed(() -> extract(url, callback), 4500);
-                }
-                @Override public void onReceivedError(WebView view, int code, String description, String failingUrl) {
-                    fail(callback, "Не удалось открыть страницу: " + description);
-                }
-            });
-            webView.loadUrl(url);
-            main.postDelayed(() -> {
-                if (busy) fail(callback, "Страница загружается слишком долго");
-            }, 25000);
+            try {
+                webView = new WebView(context);
+                webView.getSettings().setJavaScriptEnabled(true);
+                webView.getSettings().setDomStorageEnabled(true);
+                webView.getSettings().setDatabaseEnabled(true);
+                webView.getSettings().setUserAgentString(
+                        "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 " +
+                        "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36");
+                webView.setWebViewClient(new WebViewClient() {
+                    @Override public void onPageFinished(WebView view, String loadedUrl) {
+                        main.postDelayed(() -> extract(url, callback), 4500);
+                    }
+                    @Override public void onReceivedError(WebView view, int code, String description, String failingUrl) {
+                        fail(callback, "Не удалось открыть страницу: " + description);
+                    }
+                });
+                webView.loadUrl(url);
+                main.postDelayed(() -> {
+                    if (busy) fail(callback, "Страница загружается слишком долго");
+                }, 25000);
+            } catch (Exception e) {
+                fail(callback, e.getMessage() == null ? "Не удалось создать WebView" : e.getMessage());
+            }
         });
     }
 
@@ -102,34 +106,23 @@ public class UniversalParser {
         String itemPrice = field(data, "itemPrice");
         String ld = field(data, "ld");
 
-        String name = firstNonEmpty(
-                jsonString(ld, "name"),
-                jsonString(html, "name"),
+        String name = firstNonEmpty(jsonString(ld, "name"), jsonString(html, "name"),
                 title.replaceAll("\\s*[|–—-]\\s*.*$", "").trim());
         r.name = clean(name);
 
-        // 1. Explicit price elements are stronger than arbitrary numbers on the page.
         double p = num(metaPrice);
         if (p < 0) p = num(itemPrice);
         if (p >= 1 && p <= 100000000) r.price = p;
-
-        // 2. Prefer an offers.price / lowPrice / priceCurrency structure from JSON-LD.
         if (r.price < 0) {
             p = structuredOfferPrice(ld);
             if (p >= 1 && p <= 100000000) r.price = p;
         }
-
-        // 3. Search visible text. Never turn a parse failure into a tiny price.
         if (r.price < 0) {
             List<Double> candidates = new ArrayList<>();
             addCurrencyPrices(body, candidates);
             r.price = chooseVisiblePrice(candidates, body);
         }
-
-        // 4. Last fallback: price/currentPrice/salePrice followed by a number in HTML/JSON.
-        if (r.price < 0) {
-            r.price = labeledPrice(html);
-        }
+        if (r.price < 0) r.price = labeledPrice(html);
         return r;
     }
 
@@ -146,8 +139,7 @@ public class UniversalParser {
     }
 
     private static double labeledPrice(String s) {
-        Matcher m = Pattern.compile("(?:price|salePrice|currentPrice|sellingPrice|\\\"price\\\")\\s*[:=]\\s*\\\"?([0-9]{1,7}(?:[.,][0-9]{1,2})?)",
-                Pattern.CASE_INSENSITIVE).matcher(s == null ? "" : s);
+        Matcher m = Pattern.compile("(?:price|salePrice|currentPrice|sellingPrice|\\\"price\\\")\\s*[:=]\\s*\\\"?([0-9]{1,7}(?:[.,][0-9]{1,2})?)", Pattern.CASE_INSENSITIVE).matcher(s == null ? "" : s);
         while (m.find()) {
             double p = num(m.group(1));
             if (p >= 1 && p <= 100000000) return p;
@@ -168,7 +160,6 @@ public class UniversalParser {
     private static double chooseVisiblePrice(List<Double> candidates, String body) {
         if (candidates.isEmpty()) return -1;
         String lower = body == null ? "" : body.toLowerCase(Locale.ROOT);
-        // Prefer a candidate next to words that normally describe the selling price.
         for (double p : candidates) {
             String n = String.valueOf((long) p);
             int from = lower.indexOf(n);
@@ -179,7 +170,6 @@ public class UniversalParser {
                         near.contains("купить") || near.contains("итого") || near.contains("скид")) return p;
             }
         }
-        // If no label is available, use the first genuine currency amount, never a 1-ruble artifact.
         return candidates.get(0);
     }
 
@@ -198,9 +188,7 @@ public class UniversalParser {
         return "";
     }
 
-    private static String clean(String s) {
-        return s == null ? "" : decode(s).replaceAll("\\s+", " ").trim();
-    }
+    private static String clean(String s) { return s == null ? "" : decode(s).replaceAll("\\s+", " ").trim(); }
 
     private static double num(String s) {
         try {
@@ -218,28 +206,21 @@ public class UniversalParser {
         if (s == null) return "";
         if (s.startsWith("\"") && s.endsWith("\"")) {
             s = s.substring(1, s.length() - 1);
-            s = s.replace("\\\"", "\"").replace("\\\\", "\\")
-                    .replace("\\n", "\n").replace("\\r", "\r").replace("\\t", "\t");
+            s = s.replace("\\\"", "\"").replace("\\\\", "\\").replace("\\n", "\n").replace("\\r", "\r").replace("\\t", "\t");
         }
         return s;
     }
 
     private static String decode(String s) {
         if (s == null) return "";
-        return s.replace("\\u002F", "/").replace("\\u0026", "&")
-                .replace("\\u003C", "<").replace("\\u003E", ">")
-                .replace("\\u0022", "\"");
+        return s.replace("\\u002F", "/").replace("\\u0026", "&").replace("\\u003C", "<").replace("\\u003E", ">").replace("\\u0022", "\"");
     }
 
     private static String domain(String url) {
-        try { return new URL(url).getHost(); }
-        catch (Exception e) { return url; }
+        try { return new URL(url).getHost(); } catch (Exception e) { return url; }
     }
 
-    private void fail(Callback callback, String message) {
-        finish();
-        callback.error(new Exception(message));
-    }
+    private void fail(Callback callback, String message) { finish(); callback.error(new Exception(message)); }
 
     private void finish() {
         busy = false;
