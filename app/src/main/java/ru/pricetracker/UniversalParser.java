@@ -54,8 +54,9 @@ public class UniversalParser {
         if (!busy || webView == null) return;
         String js = "(function(){" +
                 "var q=function(s){var e=document.querySelector(s);return e?(e.content||e.getAttribute('content')||e.innerText||''):''};" +
+                "var first=function(s){var e=document.querySelector(s);return e?(e.innerText||e.textContent||''):''};" +
                 "var ld=[];document.querySelectorAll('script[type=\\\"application/ld+json\\\"]').forEach(function(e){ld.push(e.textContent)});" +
-                "return JSON.stringify({title:document.title,body:document.body?document.body.innerText:'',html:document.documentElement?document.documentElement.outerHTML:'',metaPrice:q('meta[property=\\\"product:price:amount\\\"]'),itemPrice:q('[itemprop=\\\"price\\\"]'),ld:ld});" +
+                "return JSON.stringify({title:document.title,body:document.body?document.body.innerText:'',html:document.documentElement?document.documentElement.outerHTML:'',metaPrice:q('meta[property=\\\"product:price:amount\\\"]'),itemPrice:q('[itemprop=\\\"price\\\"]'),ozonPrice:first('[data-widget=\\\"webPrice\\\"] span'),ld:ld});" +
                 "})()";
         webView.evaluateJavascript(js, value -> {
             try {
@@ -71,15 +72,39 @@ public class UniversalParser {
     private Result parse(String data, String url) {
         Result r = new Result(); r.site = domain(url);
         String title = field(data, "title"), body = field(data, "body"), html = field(data, "html");
-        String metaPrice = field(data, "metaPrice"), itemPrice = field(data, "itemPrice"), ld = field(data, "ld");
+        String metaPrice = field(data, "metaPrice"), itemPrice = field(data, "itemPrice"), ozonPrice = field(data, "ozonPrice"), ld = field(data, "ld");
         String name = firstNonEmpty(jsonString(ld, "name"), jsonString(html, "name"), title.replaceAll("\\s*[|–—-]\\s*.*$", "").trim());
         r.name = clean(name);
-        double p = num(metaPrice); if (p < 0) p = num(itemPrice);
-        if (p >= 1 && p <= 100000000) r.price = p;
+
+        // Ozon puts the actual visible current price into the webPrice widget.
+        // Read that widget before scanning the whole page, because descriptions
+        // and characteristics can contain unrelated amounts such as "Баланс 1700 руб.".
+        if (isOzon(url)) {
+            double p = priceFromText(ozonPrice);
+            if (p >= 1 && p <= 100000000) r.price = p;
+        }
+
+        double p = num(metaPrice); if (r.price < 0 && p >= 1 && p <= 100000000) r.price = p;
+        p = num(itemPrice); if (r.price < 0 && p >= 1 && p <= 100000000) r.price = p;
         if (r.price < 0) { p = structuredOfferPrice(ld); if (p >= 1 && p <= 100000000) r.price = p; }
         if (r.price < 0) { List<Double> candidates = new ArrayList<>(); addCurrencyPrices(body, candidates); r.price = chooseVisiblePrice(candidates, body); }
         if (r.price < 0) r.price = labeledPrice(html);
         return r;
+    }
+
+    private static boolean isOzon(String url) {
+        return url != null && url.toLowerCase(Locale.ROOT).contains("ozon.");
+    }
+
+    private static double priceFromText(String text) {
+        if (text == null || text.trim().isEmpty()) return -1;
+        // The first price in Ozon's webPrice span is the current visible price.
+        Matcher m = Pattern.compile("(?<!\\d)(\\d{1,3}(?:(?:[\\s\\u00A0\\u202F.]\\s*)\\d{3})+|\\d+)(?:[.,]\\d{1,2})?\\s*(?:₽|руб(?:лей|ля)?\\.?|RUB)", Pattern.CASE_INSENSITIVE).matcher(text);
+        if (m.find()) {
+            String raw = m.group(1).replaceAll("[\\s\\u00A0\\u202F.]", "");
+            return num(raw);
+        }
+        return -1;
     }
 
     private static double structuredOfferPrice(String s) {
