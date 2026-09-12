@@ -6,42 +6,34 @@ on:
     branches:
       - main
       - master
+      - fresh-rewrite-v1
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-
       - name: Setup Java
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: '9.5.0'
-
       - name: Decode keystore
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > pricetracker.keystore
-
       - name: Check keystore
         run: |
-          echo "Проверяем файл:"
-          ls -la pricetracker.keystore
-          echo "Размер:"
-          wc -c pricetracker.keystore
-
+          test -s pricetracker.keystore
+          ls -l pricetracker.keystore
       - name: Build APK
         run: gradle assembleRelease
-
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PriceTracker_Universal_v2-release
+          name: PriceTracker-fresh-rewrite-release
           path: app/build/outputs/apk/release/app-release.apk
