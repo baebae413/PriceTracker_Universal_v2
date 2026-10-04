@@ -26,6 +26,7 @@ public class UniversalParser {
     private final Handler main = new Handler(Looper.getMainLooper());
     private WebView webView;
     private boolean busy;
+    private boolean yandexState;
 
     public UniversalParser(Context context) { this.context = context; }
 
@@ -51,6 +52,26 @@ public class UniversalParser {
     }
 
     private void prepareAndExtract(String originalUrl, Callback callback) {
+        if (isYandexMarket(originalUrl)) {
+            String js = "(function(){try{var C={price:{},buyOption:{},productCardMeta:{},popupInfo:{}};" +
+                    "document.querySelectorAll('noframes[data-apiary=\\\"patch\\\"]').forEach(function(e){try{var d=JSON.parse(e.textContent||'{}');var cc=d.collections||{};" +
+                    "Object.keys(C).forEach(function(n){var x=cc[n];if(x&&typeof x==='object')Object.keys(x).forEach(function(k){C[n][k]=x[k]});});}catch(x){}});" +
+                    "var first=function(o){var a=Object.keys(o);for(var i=0;i<a.length;i++){var v=o[a[i]];if(v&&typeof v==='object')return v;}return {};};" +
+                    "var pr=first(C.price),bo=first(C.buyOption),meta=first(C.productCardMeta),pop={};" +
+                    "Object.keys(C.popupInfo).some(function(k){var v=C.popupInfo[k];if(v&&v.type==='priceDetails'){pop=(v.params||{}).priceDetails||{};return true;}return false;});" +
+                    "var main=pr.mainPrice||{}, mainPrice=main.price?main.price.value:null, isPay=main.subtype==='ya-card';" +
+                    "var old={}, oo=pr.oldPrices||[];oo.forEach(function(x){if(x&&x.type)old[x.type]=x.price?x.price.value:null;});" +
+                    "var cart=bo.price?bo.price.value:null;" +
+                    "var pay=pop.pay!=null?pop.pay:(isPay?mainPrice:null);" +
+                    "var derived=isPay?(old.regular!=null?old.regular:(old.withoutDiscount!=null&&Object.keys(old).length===1?old.withoutDiscount:null)):(main.subtype?null:mainPrice);" +
+                    "var noCard=pop.no_card!=null?pop.no_card:(cart!=null?cart:derived);" +
+                    "var before=pop.before!=null?pop.before:((!pop&&isPay)?old.withoutDiscount:null);" +
+                    "return JSON.stringify({noCard:noCard,pay:pay,before:before,cart:cart,main:mainPrice,mainSubtype:main.subtype||'',title:meta.title||''});" +
+                    "}catch(e){return JSON.stringify({error:String(e)})}})()";
+            webView.evaluateJavascript(js, value -> main.postDelayed(() -> extract(originalUrl, callback), 1000));
+            yandexState = true;
+            return;
+        }
         if (!isOzon(originalUrl)) { extract(originalUrl, callback); return; }
         String js = "(function(){try{if(window.__ptOzonApiStarted)return 'started';window.__ptOzonApiStarted=true;fetch('/api/composer-api.bx/page/json/v2?url='+encodeURIComponent(location.pathname+location.search),{credentials:'include'}).then(function(r){return r.text()}).then(function(t){window.__ptOzonApi=t}).catch(function(){window.__ptOzonApi=''});return 'started';}catch(e){return 'error'}})()";
         webView.evaluateJavascript(js, value -> main.postDelayed(() -> extract(originalUrl, callback), 2500));
@@ -62,7 +83,7 @@ public class UniversalParser {
                 "var q=function(s){var e=document.querySelector(s);return e?(e.content||e.getAttribute('content')||e.innerText||''):''};" +
                 "var first=function(s){var e=document.querySelector(s);return e?(e.innerText||e.textContent||''):''};" +
                 "var ld=[];document.querySelectorAll('script[type=\\\"application/ld+json\\\"]').forEach(function(e){ld.push(e.textContent)});var ozState='';var ozEl=document.querySelector('[id^=\\\"state-webPrice\\\"]');if(ozEl&&ozEl.dataset)ozState=ozEl.dataset.state||'';" +
-                "return JSON.stringify({title:document.title,body:document.body?document.body.innerText:'',html:document.documentElement?document.documentElement.outerHTML:'',metaPrice:q('meta[property=\\\"product:price:amount\\\"]'),itemPrice:q('[itemprop=\\\"price\\\"]'),ozonPrice:first('[data-widget=\\\"webPrice\\\"] .tsHeadline600Large, [data-widget=\\\"webPrice\\\"] span, [data-widget=\\\"webOzonAccountPrice\\\"] .tsHeadline600Large'),ozonState:ozState,ozonApi:(window.__ptOzonApi||''),ld:ld.join('\\n')});" +
+                "return JSON.stringify({title:document.title,body:document.body?document.body.innerText:'',html:document.documentElement?document.documentElement.outerHTML:'',metaPrice:q('meta[property=\\\"product:price:amount\\\"]'),itemPrice:q('[itemprop=\\\"price\\\"]'),ozonPrice:first('[data-widget=\\\"webPrice\\\"] .tsHeadline600Large, [data-widget=\\\"webPrice\\\"] span, [data-widget=\\\"webOzonAccountPrice\\\"] .tsHeadline600Large'),ozonState:ozState,ozonApi:(window.__ptOzonApi||''),yandexState:(window.__ptYandexState||''),ld:ld.join('\\n')});" +
                 "})()";
         webView.evaluateJavascript(js, value -> {
             try {
@@ -78,9 +99,15 @@ public class UniversalParser {
     private Result parse(String data, String url) {
         Result r = new Result(); r.site = domain(url);
         String title = field(data, "title"), body = field(data, "body"), html = field(data, "html");
-        String metaPrice = field(data, "metaPrice"), itemPrice = field(data, "itemPrice"), ozonPrice = field(data, "ozonPrice"), ozonState = field(data, "ozonState"), ozonApi = field(data, "ozonApi"), ld = field(data, "ld");
+        String metaPrice = field(data, "metaPrice"), itemPrice = field(data, "itemPrice"), ozonPrice = field(data, "ozonPrice"), ozonState = field(data, "ozonState"), ozonApi = field(data, "ozonApi"), yandexState = field(data, "yandexState"), ld = field(data, "ld");
         String name = firstNonEmpty(jsonString(ld, "name"), jsonString(html, "name"), title.replaceAll("\\s*[|–—-]\\s*.*$", "").trim());
         r.name = clean(name);
+
+        if (isYandexMarket(url)) {
+            double yp = jsonNumber(yandexState, "noCard");
+            if (validPrice(yp)) r.price = yp;
+            if (r.name.trim().isEmpty()) r.name = jsonString(yandexState, "title");
+        }
 
         // Ozon puts the actual visible current price into the webPrice widget.
         // Read that widget before scanning the whole page, because descriptions
@@ -120,6 +147,10 @@ public class UniversalParser {
 
     private static boolean validPrice(double p) { return p >= 1 && p <= 100000000; }
     private static boolean samePrice(double a, double b) { return validPrice(a) && validPrice(b) && Math.abs(a - b) < 0.01; }
+
+    private static boolean isYandexMarket(String url) {
+        return url != null && url.toLowerCase(Locale.ROOT).contains("market.yandex.");
+    }
 
     private static boolean isOzon(String url) {
         return url != null && url.toLowerCase(Locale.ROOT).contains("ozon.");
