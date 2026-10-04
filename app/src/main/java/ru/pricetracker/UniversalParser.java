@@ -55,8 +55,8 @@ public class UniversalParser {
         String js = "(function(){" +
                 "var q=function(s){var e=document.querySelector(s);return e?(e.content||e.getAttribute('content')||e.innerText||''):''};" +
                 "var first=function(s){var e=document.querySelector(s);return e?(e.innerText||e.textContent||''):''};" +
-                "var ld=[];document.querySelectorAll('script[type=\\\"application/ld+json\\\"]').forEach(function(e){ld.push(e.textContent)});" +
-                "return JSON.stringify({title:document.title,body:document.body?document.body.innerText:'',html:document.documentElement?document.documentElement.outerHTML:'',metaPrice:q('meta[property=\\\"product:price:amount\\\"]'),itemPrice:q('[itemprop=\\\"price\\\"]'),ozonPrice:first('[data-widget=\\\"webPrice\\\"] .tsHeadline600Large, [data-widget=\\\"webOzonAccountPrice\\\"] .tsHeadline600Large, [data-widget=\\\"webPrice\\\"] span'),ld:ld});" +
+                "var ld=[];document.querySelectorAll('script[type=\\\"application/ld+json\\\"]').forEach(function(e){ld.push(e.textContent)});var ozState='';var ozEl=document.querySelector('[id^=\\\"state-webPrice\\\"]');if(ozEl&&ozEl.dataset)ozState=ozEl.dataset.state||'';" +
+                "return JSON.stringify({title:document.title,body:document.body?document.body.innerText:'',html:document.documentElement?document.documentElement.outerHTML:'',metaPrice:q('meta[property=\\\"product:price:amount\\\"]'),itemPrice:q('[itemprop=\\\"price\\\"]'),ozonPrice:first('[data-widget=\\\"webPrice\\\"] .tsHeadline600Large, [data-widget=\\\"webOzonAccountPrice\\\"] .tsHeadline600Large, [data-widget=\\\"webPrice\\\"] span'),ozonState:ozState,ld:ld});" +
                 "})()";
         webView.evaluateJavascript(js, value -> {
             try {
@@ -72,7 +72,7 @@ public class UniversalParser {
     private Result parse(String data, String url) {
         Result r = new Result(); r.site = domain(url);
         String title = field(data, "title"), body = field(data, "body"), html = field(data, "html");
-        String metaPrice = field(data, "metaPrice"), itemPrice = field(data, "itemPrice"), ozonPrice = field(data, "ozonPrice"), ld = field(data, "ld");
+        String metaPrice = field(data, "metaPrice"), itemPrice = field(data, "itemPrice"), ozonPrice = field(data, "ozonPrice"), ozonState = field(data, "ozonState"), ld = field(data, "ld");
         String name = firstNonEmpty(jsonString(ld, "name"), jsonString(html, "name"), title.replaceAll("\\s*[|–—-]\\s*.*$", "").trim());
         r.name = clean(name);
 
@@ -80,7 +80,10 @@ public class UniversalParser {
         // Read that widget before scanning the whole page, because descriptions
         // and characteristics can contain unrelated amounts such as "Баланс 1700 руб.".
         if (isOzon(url)) {
-            double p = priceFromText(ozonPrice);
+            // Ozon's own state-webPrice data is more reliable than the first
+            // visible span: it distinguishes regular price from card/promo price.
+            double p = jsonNumber(ozonState, "price");
+            if (p < 1 || p > 100000000) p = priceFromText(ozonPrice);
             if (p >= 1 && p <= 100000000) r.price = p;
         }
 
