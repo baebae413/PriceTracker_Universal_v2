@@ -88,6 +88,12 @@ public class UniversalParser {
             try {
                 String raw = unquote(value);
                 Result result = parse(raw, originalUrl);
+                if (isYandexMarket(originalUrl)) {
+                    double yp = jsonNumber(yandexState, "noCard");
+                    if (validPrice(yp)) result.price = yp;
+                    String yt = jsonString(yandexState, "title");
+                    if (result.name.trim().isEmpty() && !yt.trim().isEmpty()) result.name = clean(yt);
+                }
                 if (result.price < 0) throw new Exception("Цена товара не найдена");
                 if (result.name.trim().isEmpty()) result.name = domain(originalUrl);
                 finish(); callback.success(result);
