@@ -41,7 +41,7 @@ public class UniversalParser {
                 webView.getSettings().setDatabaseEnabled(true);
                 webView.getSettings().setUserAgentString("Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36");
                 webView.setWebViewClient(new WebViewClient() {
-                    @Override public void onPageFinished(WebView view, String loadedUrl) { main.postDelayed(() -> extract(url, callback), 4500); }
+                    @Override public void onPageFinished(WebView view, String loadedUrl) { main.postDelayed(() -> prepareAndExtract(url, callback), 4500); }
                     @Override public void onReceivedError(WebView view, int code, String description, String failingUrl) { fail(callback, "Не удалось открыть страницу: " + description); }
                 });
                 webView.loadUrl(url);
@@ -50,13 +50,19 @@ public class UniversalParser {
         });
     }
 
+    private void prepareAndExtract(String originalUrl, Callback callback) {
+        if (!isOzon(originalUrl)) { extract(originalUrl, callback); return; }
+        String js = "(function(){try{if(window.__ptOzonApiStarted)return 'started';window.__ptOzonApiStarted=true;fetch('/api/composer-api.bx/page/json/v2?url='+encodeURIComponent(location.pathname+location.search),{credentials:'include'}).then(function(r){return r.text()}).then(function(t){window.__ptOzonApi=t}).catch(function(){window.__ptOzonApi=''});return 'started';}catch(e){return 'error'}})()";
+        webView.evaluateJavascript(js, value -> main.postDelayed(() -> extract(originalUrl, callback), 2500));
+    }
+
     private void extract(String originalUrl, Callback callback) {
         if (!busy || webView == null) return;
         String js = "(function(){" +
                 "var q=function(s){var e=document.querySelector(s);return e?(e.content||e.getAttribute('content')||e.innerText||''):''};" +
                 "var first=function(s){var e=document.querySelector(s);return e?(e.innerText||e.textContent||''):''};" +
                 "var ld=[];document.querySelectorAll('script[type=\\\"application/ld+json\\\"]').forEach(function(e){ld.push(e.textContent)});var ozState='';var ozEl=document.querySelector('[id^=\\\"state-webPrice\\\"]');if(ozEl&&ozEl.dataset)ozState=ozEl.dataset.state||'';" +
-                "return JSON.stringify({title:document.title,body:document.body?document.body.innerText:'',html:document.documentElement?document.documentElement.outerHTML:'',metaPrice:q('meta[property=\\\"product:price:amount\\\"]'),itemPrice:q('[itemprop=\\\"price\\\"]'),ozonPrice:first('[data-widget=\\\"webPrice\\\"] .tsHeadline600Large, [data-widget=\\\"webOzonAccountPrice\\\"] .tsHeadline600Large, [data-widget=\\\"webPrice\\\"] span'),ozonState:ozState,ld:ld});" +
+                "return JSON.stringify({title:document.title,body:document.body?document.body.innerText:'',html:document.documentElement?document.documentElement.outerHTML:'',metaPrice:q('meta[property=\\\"product:price:amount\\\"]'),itemPrice:q('[itemprop=\\\"price\\\"]'),ozonPrice:first('[data-widget=\\\"webPrice\\\"] .tsHeadline600Large, [data-widget=\\\"webPrice\\\"] span, [data-widget=\\\"webOzonAccountPrice\\\"] .tsHeadline600Large'),ozonState:ozState,ozonApi:(window.__ptOzonApi||''),ld:ld});" +
                 "})()";
         webView.evaluateJavascript(js, value -> {
             try {
@@ -72,7 +78,7 @@ public class UniversalParser {
     private Result parse(String data, String url) {
         Result r = new Result(); r.site = domain(url);
         String title = field(data, "title"), body = field(data, "body"), html = field(data, "html");
-        String metaPrice = field(data, "metaPrice"), itemPrice = field(data, "itemPrice"), ozonPrice = field(data, "ozonPrice"), ozonState = field(data, "ozonState"), ld = field(data, "ld");
+        String metaPrice = field(data, "metaPrice"), itemPrice = field(data, "itemPrice"), ozonPrice = field(data, "ozonPrice"), ozonState = field(data, "ozonState"), ozonApi = field(data, "ozonApi"), ld = field(data, "ld");
         String name = firstNonEmpty(jsonString(ld, "name"), jsonString(html, "name"), title.replaceAll("\\s*[|–—-]\\s*.*$", "").trim());
         r.name = clean(name);
 
@@ -80,11 +86,7 @@ public class UniversalParser {
         // Read that widget before scanning the whole page, because descriptions
         // and characteristics can contain unrelated amounts such as "Баланс 1700 руб.".
         if (isOzon(url)) {
-            // Ozon's own state-webPrice data is more reliable than the first
-            // visible span: it distinguishes regular price from card/promo price.
-            double p = jsonNumber(ozonState, "price");
-            if (p < 1 || p > 100000000) p = priceFromText(ozonPrice);
-            if (p >= 1 && p <= 100000000) r.price = p;
+            r.price = chooseOzonPrice(ozonApi, ld, ozonPrice, ozonState);
         }
 
         double p = num(metaPrice); if (r.price < 0 && p >= 1 && p <= 100000000) r.price = p;
@@ -94,6 +96,30 @@ public class UniversalParser {
         if (r.price < 0) r.price = labeledPrice(html);
         return r;
     }
+
+    private static double chooseOzonPrice(String api, String ld, String visible, String state) {
+        double apiPrice = structuredOfferPrice(api);
+        double ldPrice = structuredOfferPrice(ld);
+        double visiblePrice = priceFromText(visible);
+        double statePrice = jsonNumber(state, "price");
+
+        if (validPrice(apiPrice) && validPrice(ldPrice) && samePrice(apiPrice, ldPrice)) return apiPrice;
+        if (validPrice(apiPrice) && !validPrice(ldPrice)) return apiPrice;
+        if (validPrice(ldPrice) && !validPrice(apiPrice)) return ldPrice;
+
+        if (validPrice(visiblePrice) &&
+                (samePrice(visiblePrice, apiPrice) || samePrice(visiblePrice, ldPrice))) {
+            return visiblePrice;
+        }
+        if (validPrice(apiPrice)) return apiPrice;
+        if (validPrice(ldPrice)) return ldPrice;
+        if (validPrice(visiblePrice)) return visiblePrice;
+        if (validPrice(statePrice)) return statePrice;
+        return -1;
+    }
+
+    private static boolean validPrice(double p) { return p >= 1 && p <= 100000000; }
+    private static boolean samePrice(double a, double b) { return validPrice(a) && validPrice(b) && Math.abs(a - b) < 0.01; }
 
     private static boolean isOzon(String url) {
         return url != null && url.toLowerCase(Locale.ROOT).contains("ozon.");
