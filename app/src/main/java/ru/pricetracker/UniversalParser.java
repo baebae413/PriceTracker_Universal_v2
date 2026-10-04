@@ -56,7 +56,7 @@ public class UniversalParser {
                 "var q=function(s){var e=document.querySelector(s);return e?(e.content||e.getAttribute('content')||e.innerText||''):''};" +
                 "var first=function(s){var e=document.querySelector(s);return e?(e.innerText||e.textContent||''):''};" +
                 "var ld=[];document.querySelectorAll('script[type=\\\"application/ld+json\\\"]').forEach(function(e){ld.push(e.textContent)});" +
-                "return JSON.stringify({title:document.title,body:document.body?document.body.innerText:'',html:document.documentElement?document.documentElement.outerHTML:'',metaPrice:q('meta[property=\\\"product:price:amount\\\"]'),itemPrice:q('[itemprop=\\\"price\\\"]'),ozonPrice:first('[data-widget=\\\"webPrice\\\"] span'),ld:ld});" +
+                "return JSON.stringify({title:document.title,body:document.body?document.body.innerText:'',html:document.documentElement?document.documentElement.outerHTML:'',metaPrice:q('meta[property=\\\"product:price:amount\\\"]'),itemPrice:q('[itemprop=\\\"price\\\"]'),ozonPrice:first('[data-widget=\\\"webPrice\\\"] .tsHeadline600Large, [data-widget=\\\"webOzonAccountPrice\\\"] .tsHeadline600Large, [data-widget=\\\"webPrice\\\"] span'),ld:ld});" +
                 "})()";
         webView.evaluateJavascript(js, value -> {
             try {
