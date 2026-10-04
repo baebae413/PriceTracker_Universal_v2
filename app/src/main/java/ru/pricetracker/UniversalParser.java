@@ -26,7 +26,7 @@ public class UniversalParser {
     private final Handler main = new Handler(Looper.getMainLooper());
     private WebView webView;
     private boolean busy;
-    private boolean yandexState;
+    private String yandexState = "";
 
     public UniversalParser(Context context) { this.context = context; }
 
@@ -68,8 +68,7 @@ public class UniversalParser {
                     "var before=pop.before!=null?pop.before:((!pop&&isPay)?old.withoutDiscount:null);" +
                     "return JSON.stringify({noCard:noCard,pay:pay,before:before,cart:cart,main:mainPrice,mainSubtype:main.subtype||'',title:meta.title||''});" +
                     "}catch(e){return JSON.stringify({error:String(e)})}})()";
-            webView.evaluateJavascript(js, value -> main.postDelayed(() -> extract(originalUrl, callback), 1000));
-            yandexState = true;
+            webView.evaluateJavascript(js, value -> { yandexState = unquote(value); main.postDelayed(() -> extract(originalUrl, callback), 1000); });
             return;
         }
         if (!isOzon(originalUrl)) { extract(originalUrl, callback); return; }
