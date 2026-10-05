@@ -31,10 +31,12 @@ public class MainActivity extends Activity {
     private static final String WORK_NAME = "price_check_periodic";
     private static final String PREFS = "settings";
     private static final String KEY_INTERVAL = "interval_minutes";
+    private static final String KEY_PRICE_MODE = "price_mode";
     private PriceDb db;
     private LinearLayout list;
     private TextView summary;
     private TextView scheduleInfo;
+    private Switch priceMode;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -71,6 +73,7 @@ public class MainActivity extends Activity {
         Button check = new Button(this); check.setText("ПРОВЕРИТЬ СЕЙЧАС"); check.setOnClickListener(v -> checkAll()); root.addView(check);
         Button schedule = new Button(this); schedule.setText("РАСПИСАНИЕ ПРОВЕРОК"); schedule.setOnClickListener(v -> scheduleDialog()); root.addView(schedule);
         scheduleInfo = text("", 14, Color.DKGRAY); scheduleInfo.setPadding(0, 4, 0, 8); root.addView(scheduleInfo);
+        priceMode = new Switch(this);\n        priceMode.setText("Показывать цену по карте Яндекс Маркета");\n        priceMode.setChecked(getPreferences(0).getBoolean(KEY_PRICE_MODE, false));\n        priceMode.setOnCheckedChangeListener((b, checked) -> { getPreferences(0).edit().putBoolean(KEY_PRICE_MODE, checked).apply(); refresh(); });\n        root.addView(priceMode);
 
         summary = text("", 14, Color.DKGRAY); summary.setPadding(0, 8, 0, 14); root.addView(summary);
         list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); root.addView(list);
@@ -129,7 +132,7 @@ public class MainActivity extends Activity {
         new UniversalParser(this).product(url, new UniversalParser.Callback() {
             @Override public void success(UniversalParser.Result r) {
                 if (r.price < 1 || r.price > 100000000) { error(new Exception("Цена не найдена")); return; }
-                long id = db.add(url, r.name, r.site, r.price); refresh();
+                boolean cardMode = getPreferences(0).getBoolean(KEY_PRICE_MODE, false);\n                double noCard = r.noCardPrice >= 1 ? r.noCardPrice : r.price;\n                double card = r.cardPrice >= 1 ? r.cardPrice : r.price;\n                double selected = cardMode ? card : noCard;\n                long id = db.add(url, r.name, r.site, selected, noCard, card); refresh();
                 toast(id == -1 ? "Этот товар уже добавлен" : "Добавлено: " + r.name + " — " + formatPrice(r.price) + " ₽");
             }
             @Override public void error(Exception e) { toast("Не удалось прочитать товар: " + e.getMessage()); refresh(); }
@@ -146,7 +149,7 @@ public class MainActivity extends Activity {
         if (index >= products.size()) { summary.setText("🟢 Подешевели: " + down + "   🔴 Подорожали: " + up + "   ⚪ Без изменений: " + same); refresh(); return; }
         PriceDb.Product p = products.get(index); summary.setText("Проверяю " + (index + 1) + " из " + products.size() + ":\n" + p.name);
         new UniversalParser(this).product(p.url, new UniversalParser.Callback() {
-            @Override public void success(UniversalParser.Result r) { double old = p.lastPrice; String status = r.price < old - 0.001 ? "down" : (r.price > old + 0.001 ? "up" : "same"); db.updatePrice(p.id, r.price, status); checkNext(products, index + 1, down + ("down".equals(status) ? 1 : 0), up + ("up".equals(status) ? 1 : 0), same + ("same".equals(status) ? 1 : 0)); }
+            @Override public void success(UniversalParser.Result r) { boolean cardMode = getPreferences(0).getBoolean(KEY_PRICE_MODE, false);\n                double noCard = r.noCardPrice >= 1 ? r.noCardPrice : r.price;\n                double card = r.cardPrice >= 1 ? r.cardPrice : r.price;\n                double selected = cardMode ? card : noCard;\n                double old = cardMode ? p.cardPrice : p.noCardPrice;\n                String status = selected < old - 0.001 ? "down" : (selected > old + 0.001 ? "up" : "same"); db.updatePrice(p.id, selected, noCard, card, status); checkNext(products, index + 1, down + ("down".equals(status) ? 1 : 0), up + ("up".equals(status) ? 1 : 0), same + ("same".equals(status) ? 1 : 0)); }
             @Override public void error(Exception e) { checkNext(products, index + 1, down, up, same); }
         });
     }
@@ -158,7 +161,7 @@ public class MainActivity extends Activity {
     private void createProductView(PriceDb.Product p) {
         LinearLayout card = new LinearLayout(this); card.setOrientation(LinearLayout.VERTICAL); card.setPadding(0, 18, 0, 18);
         TextView name = text(p.name, 17, Color.BLACK); name.setOnClickListener(v -> openUrl(p.url)); card.addView(name);
-        String icon = ""; if ("down".equals(p.status)) icon = "  🟢 ↓"; else if ("up".equals(p.status)) icon = "  🔴 ↑"; else if ("same".equals(p.status)) icon = "  ⚪ ="; card.addView(text(formatPrice(p.lastPrice) + " ₽" + icon, 18, Color.BLACK));
+        String icon = ""; if ("down".equals(p.status)) icon = "  🟢 ↓"; else if ("up".equals(p.status)) icon = "  🔴 ↑"; else if ("same".equals(p.status)) icon = "  ⚪ ="; boolean cardMode = getPreferences(0).getBoolean(KEY_PRICE_MODE, false);\n        double shownPrice = cardMode ? p.cardPrice : p.noCardPrice;\n        String priceLabel = cardMode ? "Цена по карте: " : "Цена без карты: ";\n        card.addView(text(priceLabel + formatPrice(shownPrice) + " ₽" + icon, 18, Color.BLACK));
         TextView site = text(p.site, 12, Color.rgb(70, 70, 150)); site.setPaintFlags(site.getPaintFlags() | Paint.UNDERLINE_TEXT_FLAG); site.setOnClickListener(v -> openUrl(p.url)); card.addView(site);
         LinearLayout controls = new LinearLayout(this); controls.setGravity(Gravity.CENTER_VERTICAL);
         Switch enabled = new Switch(this); enabled.setText("Отслеживать"); enabled.setChecked(p.enabled); enabled.setOnCheckedChangeListener((b, checked) -> db.setEnabled(p.id, checked)); controls.addView(enabled, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
