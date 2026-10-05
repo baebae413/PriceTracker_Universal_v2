@@ -137,12 +137,10 @@ public class MainActivity extends Activity {
         new UniversalParser(this).product(url, new UniversalParser.Callback() {
             @Override public void success(UniversalParser.Result r) {
                 if (r.price < 1 || r.price > 100000000) { error(new Exception("Цена не найдена")); return; }
-                boolean cardMode = getPreferences(0).getBoolean(KEY_PRICE_MODE, false);
                 double noCard = r.noCardPrice >= 1 ? r.noCardPrice : r.price;
                 double card = r.cardPrice >= 1 ? r.cardPrice : r.price;
-                double selected = cardMode ? card : noCard;
-                long id = db.add(url, r.name, r.site, selected, noCard, card); refresh();
-                toast(id == -1 ? "Этот товар уже добавлен" : "Добавлено: " + r.name + " — " + formatPrice(r.price) + " ₽");
+                long id = db.add(url, r.name, r.site, noCard, noCard, card); refresh();
+                toast(id == -1 ? "Этот товар уже добавлен" : "Добавлено: " + r.name + " — " + formatPrice(noCard) + " ₽");
             }
             @Override public void error(Exception e) { toast("Не удалось прочитать товар: " + e.getMessage()); refresh(); }
         });
@@ -158,7 +156,7 @@ public class MainActivity extends Activity {
         if (index >= products.size()) { summary.setText("🟢 Подешевели: " + down + "   🔴 Подорожали: " + up + "   ⚪ Без изменений: " + same); refresh(); return; }
         PriceDb.Product p = products.get(index); summary.setText("Проверяю " + (index + 1) + " из " + products.size() + ":\n" + p.name);
         new UniversalParser(this).product(p.url, new UniversalParser.Callback() {
-            @Override public void success(UniversalParser.Result r) { boolean cardMode = getPreferences(0).getBoolean(KEY_PRICE_MODE, false);
+            @Override public void success(UniversalParser.Result r) { boolean cardMode = p.showCard;
                 double noCard = r.noCardPrice >= 1 ? r.noCardPrice : r.price;
                 double card = r.cardPrice >= 1 ? r.cardPrice : r.price;
                 double selected = cardMode ? card : noCard;
@@ -176,9 +174,17 @@ public class MainActivity extends Activity {
         LinearLayout card = new LinearLayout(this); card.setOrientation(LinearLayout.VERTICAL); card.setPadding(0, 18, 0, 18);
         TextView name = text(p.name, 17, Color.BLACK); name.setOnClickListener(v -> openUrl(p.url)); card.addView(name);
         String icon = ""; if ("down".equals(p.status)) icon = "  🟢 ↓"; else if ("up".equals(p.status)) icon = "  🔴 ↑"; else if ("same".equals(p.status)) icon = "  ⚪ ="; boolean cardMode = getPreferences(0).getBoolean(KEY_PRICE_MODE, false);
-        double shownPrice = cardMode ? p.cardPrice : p.noCardPrice;
-        String priceLabel = cardMode ? "Цена по карте: " : "Цена без карты: ";
+        boolean yandex = p.url != null && p.url.toLowerCase(Locale.ROOT).contains("market.yandex.");
+        double shownPrice = p.showCard ? p.cardPrice : p.noCardPrice;
+        String priceLabel = p.showCard ? "Цена по карте: " : "Цена без карты: ";
         card.addView(text(priceLabel + formatPrice(shownPrice) + " ₽" + icon, 18, Color.BLACK));
+        if (yandex) {
+            Switch cardSwitch = new Switch(this);
+            cardSwitch.setText("Цена по карте");
+            cardSwitch.setChecked(p.showCard);
+            cardSwitch.setOnCheckedChangeListener((button, checked) -> { db.setShowCard(p.id, checked); refresh(); });
+            card.addView(cardSwitch);
+        }
         TextView site = text(p.site, 12, Color.rgb(70, 70, 150)); site.setPaintFlags(site.getPaintFlags() | Paint.UNDERLINE_TEXT_FLAG); site.setOnClickListener(v -> openUrl(p.url)); card.addView(site);
         LinearLayout controls = new LinearLayout(this); controls.setGravity(Gravity.CENTER_VERTICAL);
         Switch enabled = new Switch(this); enabled.setText("Отслеживать"); enabled.setChecked(p.enabled); enabled.setOnCheckedChangeListener((b, checked) -> db.setEnabled(p.id, checked)); controls.addView(enabled, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
