@@ -78,7 +78,7 @@ public class MainActivity extends Activity {
         priceMode.setText("Показывать цену по карте Яндекс Маркета");
         priceMode.setChecked(getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(KEY_PRICE_MODE, false));
         priceMode.setOnCheckedChangeListener((b, checked) -> { getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(KEY_PRICE_MODE, checked).apply(); refresh(); });
-        root.addView(priceMode);
+        priceMode.setVisibility(8);
 
         summary = text("", 14, Color.DKGRAY); summary.setPadding(0, 8, 0, 14); root.addView(summary);
         list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); root.addView(list);
