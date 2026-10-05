@@ -70,8 +70,8 @@ public class UniversalParser {
                     "var noCard=pop.no_card!=null?pop.no_card:(cart!=null?cart:derived);" +
                     "var before=pop.before!=null?pop.before:((!pop&&isPay)?old.withoutDiscount:null);" +
                     "var bodyText=document.body?document.body.innerText:'';" +
-                    "var cardMatch=bodyText.match(/(?:цена\\s*(?:с|по)\\s*карт(?:е|ой)|с\\s*картой)(?:\\s+яндекс\\s*пэй)?[\\s\\S]{0,100}?(\\d[\\d\\s\\u00a0\\u202f.]*)\\s*₽/i);" +
-                    "var cardText=cardMatch?cardMatch[1]:'';" +
+                    "var cardLabel=/(?:цена\\s*(?:с|по)\\s*карт(?:е|ой)|с\\s*картой|по\\s*карте)(?:\\s+яндекс\\s*(?:пэй|плюс))?/i;" +
+                    "var cardText='';var cm=cardLabel.exec(bodyText);if(cm){var a=Math.max(0,cm.index-180),b=Math.min(bodyText.length,cm.index+cm[0].length+180),near=bodyText.slice(a,b);var pm=near.match(/(\\d[\\d\\s\\u00a0\\u202f.]*)\\s*₽/);if(pm)cardText=pm[1];}" +
                     "return JSON.stringify({noCard:noCard,pay:pay,before:before,cart:cart,main:mainPrice,mainSubtype:main.subtype||'',title:meta.title||'',cardText:cardText,bodyText:bodyText.slice(0,60000)});" +
                     "}catch(e){return JSON.stringify({error:String(e)})}})()";
             webView.evaluateJavascript(js, value -> { yandexState = unquote(value); if (jsonNumber(yandexState, "noCard") >= 1 || jsonNumber(yandexState, "pay") >= 1 || !jsonString(yandexState, "title").trim().isEmpty()) { main.postDelayed(() -> extract(originalUrl, callback), 300); } else { main.postDelayed(() -> prepareAndExtract(originalUrl, callback), 1200); } });
@@ -108,7 +108,7 @@ public class UniversalParser {
                     if (validPrice(ycardText)) result.cardPrice = ycardText;
                     else if (validPrice(ycard)) result.cardPrice = ycard;
                     String yt = jsonString(yandexState, "title");
-                    if (result.name.trim().isEmpty() && !yt.trim().isEmpty()) result.name = clean(yt);
+                    if (!yt.trim().isEmpty() && !yt.equalsIgnoreCase("%og_title%")) result.name = clean(yt);
                 }
                 if (result.price < 0) throw new Exception("Цена товара не найдена");
                 if (result.name.trim().isEmpty()) result.name = domain(originalUrl);
