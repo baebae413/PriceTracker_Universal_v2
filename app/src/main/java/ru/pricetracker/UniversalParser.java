@@ -69,7 +69,10 @@ public class UniversalParser {
                     "var derived=isPay?(old.regular!=null?old.regular:(old.withoutDiscount!=null&&Object.keys(old).length===1?old.withoutDiscount:null)):(main.subtype?null:mainPrice);" +
                     "var noCard=pop.no_card!=null?pop.no_card:(cart!=null?cart:derived);" +
                     "var before=pop.before!=null?pop.before:((!pop&&isPay)?old.withoutDiscount:null);" +
-                    "return JSON.stringify({noCard:noCard,pay:pay,before:before,cart:cart,main:mainPrice,mainSubtype:main.subtype||'',title:meta.title||''});" +
+                    "var bodyText=document.body?document.body.innerText:'';" +
+                    "var cardMatch=bodyText.match(/(?:цена\\s*(?:с|по)\\s*карт(?:е|ой)|с\\s*картой)(?:\\s+яндекс\\s*пэй)?[\\s\\S]{0,100}?(\\d[\\d\\s\\u00a0\\u202f.]*)\\s*₽/i);" +
+                    "var cardText=cardMatch?cardMatch[1]:'';" +
+                    "return JSON.stringify({noCard:noCard,pay:pay,before:before,cart:cart,main:mainPrice,mainSubtype:main.subtype||'',title:meta.title||'',cardText:cardText,bodyText:bodyText.slice(0,60000)});" +
                     "}catch(e){return JSON.stringify({error:String(e)})}})()";
             webView.evaluateJavascript(js, value -> { yandexState = unquote(value); if (jsonNumber(yandexState, "noCard") >= 1 || jsonNumber(yandexState, "pay") >= 1 || !jsonString(yandexState, "title").trim().isEmpty()) { main.postDelayed(() -> extract(originalUrl, callback), 300); } else { main.postDelayed(() -> prepareAndExtract(originalUrl, callback), 1200); } });
             return;
@@ -101,7 +104,9 @@ public class UniversalParser {
                         result.noCardPrice = yp;
                         result.price = yp;
                     }
-                    if (validPrice(ycard)) result.cardPrice = ycard;
+                    double ycardText = num(jsonString(yandexState, "cardText"));
+                    if (validPrice(ycardText)) result.cardPrice = ycardText;
+                    else if (validPrice(ycard)) result.cardPrice = ycard;
                     String yt = jsonString(yandexState, "title");
                     if (result.name.trim().isEmpty() && !yt.trim().isEmpty()) result.name = clean(yt);
                 }
