@@ -95,7 +95,12 @@ public class UniversalParser {
                 Result result = parse(raw, originalUrl);
                 if (isYandexMarket(originalUrl)) {
                     double yp = jsonNumber(yandexState, "noCard");
-                    if (validPrice(yp)) result.price = yp;
+                    double ycard = jsonNumber(yandexState, "pay");
+                    if (validPrice(yp)) {
+                        result.noCardPrice = yp;
+                        result.price = yp;
+                    }
+                    if (validPrice(ycard)) result.cardPrice = ycard;
                     String yt = jsonString(yandexState, "title");
                     if (result.name.trim().isEmpty() && !yt.trim().isEmpty()) result.name = clean(yt);
                 }
