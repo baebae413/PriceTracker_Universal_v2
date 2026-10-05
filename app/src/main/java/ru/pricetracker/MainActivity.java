@@ -26,7 +26,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
-// Yandex Market: wait for slow first-load data and support card/non-card price display.\npublic class MainActivity extends Activity {
+// Yandex Market: wait for slow first-load data and support card/non-card price display.
+public class MainActivity extends Activity {
     public static final String CHANNEL_ID = "price_tracker";
     private static final String WORK_NAME = "price_check_periodic";
     private static final String PREFS = "settings";
