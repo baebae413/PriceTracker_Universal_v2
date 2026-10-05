@@ -73,7 +73,7 @@ public class MainActivity extends Activity {
         Button check = new Button(this); check.setText("ПРОВЕРИТЬ СЕЙЧАС"); check.setOnClickListener(v -> checkAll()); root.addView(check);
         Button schedule = new Button(this); schedule.setText("РАСПИСАНИЕ ПРОВЕРОК"); schedule.setOnClickListener(v -> scheduleDialog()); root.addView(schedule);
         scheduleInfo = text("", 14, Color.DKGRAY); scheduleInfo.setPadding(0, 4, 0, 8); root.addView(scheduleInfo);
-        priceMode = new Switch(this);\n        priceMode.setText("Показывать цену по карте Яндекс Маркета");\n        priceMode.setChecked(getPreferences(0).getBoolean(KEY_PRICE_MODE, false));\n        priceMode.setOnCheckedChangeListener((b, checked) -> { getPreferences(0).edit().putBoolean(KEY_PRICE_MODE, checked).apply(); refresh(); });\n        root.addView(priceMode);
+        priceMode = new Switch(this);\n        priceMode.setText("Показывать цену по карте Яндекс Маркета");\n        priceMode.setChecked(getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(KEY_PRICE_MODE, false));\n        priceMode.setOnCheckedChangeListener((b, checked) -> { getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(KEY_PRICE_MODE, checked).apply(); refresh(); });\n        root.addView(priceMode);
 
         summary = text("", 14, Color.DKGRAY); summary.setPadding(0, 8, 0, 14); root.addView(summary);
         list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); root.addView(list);
