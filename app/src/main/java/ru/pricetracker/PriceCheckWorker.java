@@ -21,7 +21,6 @@ public class PriceCheckWorker extends Worker {
 
     @Override public Result doWork() {
         PriceDb db = new PriceDb(context);
-        boolean cardMode = context.getSharedPreferences("settings", Context.MODE_PRIVATE).getBoolean("price_mode", false);
         List<PriceDb.Product> products = db.enabledProducts();
         if (products.isEmpty()) return Result.success();
 
@@ -33,14 +32,17 @@ public class PriceCheckWorker extends Worker {
                 @Override public void success(UniversalParser.Result r) {
                     try {
                         if (r.price >= 1 && r.price <= 100000000) {
-                            double old = product.lastPrice;
+                            double noCard = r.noCardPrice >= 1 ? r.noCardPrice : r.price;
+                            double card = r.cardPrice >= 1 ? r.cardPrice : r.price;
+                            double selected = product.showCard ? card : noCard;
+                            double old = product.showCard ? product.cardPrice : product.noCardPrice;
                             if (r.price < old - 0.001) {
-                                db.updatePrice(product.id, r.price, "down");
-                                notifyDrop(product, old, r.price);
+                                db.updatePrice(product.id, selected, noCard, card, "down");
+                                notifyDrop(product, old, selected);
                             } else if (r.price > old + 0.001) {
-                                db.updatePrice(product.id, r.price, "up");
+                                db.updatePrice(product.id, selected, noCard, card, "up");
                             } else {
-                                db.updatePrice(product.id, r.price, "same");
+                                db.updatePrice(product.id, selected, noCard, card, "same");
                             }
                         }
                     } finally { latch.countDown(); }
