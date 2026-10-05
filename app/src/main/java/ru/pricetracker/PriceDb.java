@@ -10,7 +10,7 @@ import java.util.List;
 
 public class PriceDb extends SQLiteOpenHelper {
     private static final String DB_NAME = "prices.db";
-    private static final int DB_VERSION = 4;
+    private static final int DB_VERSION = 5;
 
     public PriceDb(Context context) {
         super(context, DB_NAME, null, DB_VERSION);
@@ -30,6 +30,7 @@ public class PriceDb extends SQLiteOpenHelper {
                 "last_price REAL NOT NULL," +
                 "no_card_price REAL NOT NULL," +
                 "card_price REAL NOT NULL," +
+                "show_card INTEGER NOT NULL DEFAULT 0," +
                 "checked_at INTEGER NOT NULL," +
                 "status TEXT NOT NULL DEFAULT 'new'," +
                 "enabled INTEGER NOT NULL DEFAULT 1)");
@@ -51,6 +52,9 @@ public class PriceDb extends SQLiteOpenHelper {
             db.execSQL("ALTER TABLE products ADD COLUMN card_price REAL NOT NULL DEFAULT 0");
             db.execSQL("UPDATE products SET no_card_price=last_price, card_price=last_price WHERE no_card_price=0 OR card_price=0");
         }
+        if (oldVersion < 5) {
+            db.execSQL("ALTER TABLE products ADD COLUMN show_card INTEGER NOT NULL DEFAULT 0");
+        }
     }
 
     public synchronized long add(String url, String name, String site, double price) {
@@ -66,6 +70,7 @@ public class PriceDb extends SQLiteOpenHelper {
         v.put("last_price", price);
         v.put("no_card_price", noCardPrice);
         v.put("card_price", cardPrice);
+        v.put("show_card", 0);
         v.put("checked_at", System.currentTimeMillis());
         v.put("status", "new");
         v.put("enabled", 1);
@@ -124,6 +129,7 @@ public class PriceDb extends SQLiteOpenHelper {
             p.lastPrice = c.getDouble(c.getColumnIndexOrThrow("last_price"));
             p.noCardPrice = c.getDouble(c.getColumnIndexOrThrow("no_card_price"));
             p.cardPrice = c.getDouble(c.getColumnIndexOrThrow("card_price"));
+            p.showCard = c.getInt(c.getColumnIndexOrThrow("show_card")) != 0;
             p.checkedAt = c.getLong(c.getColumnIndexOrThrow("checked_at"));
             p.status = c.getString(c.getColumnIndexOrThrow("status"));
             p.enabled = c.getInt(c.getColumnIndexOrThrow("enabled")) != 0;
@@ -161,6 +167,12 @@ public class PriceDb extends SQLiteOpenHelper {
         getWritableDatabase().delete("products", "id=?", new String[]{String.valueOf(id)});
     }
 
+    public synchronized void setShowCard(long id, boolean showCard) {
+        ContentValues v = new ContentValues();
+        v.put("show_card", showCard ? 1 : 0);
+        getWritableDatabase().update("products", v, "id=?", new String[]{String.valueOf(id)});
+    }
+
     public synchronized void setEnabled(long id, boolean enabled) {
         ContentValues v = new ContentValues();
         v.put("enabled", enabled ? 1 : 0);
@@ -190,6 +202,7 @@ public class PriceDb extends SQLiteOpenHelper {
         double lastPrice;
         long checkedAt;
         double noCardPrice, cardPrice;
+        boolean showCard;
         boolean enabled;
     }
 
