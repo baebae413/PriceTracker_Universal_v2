@@ -26,7 +26,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
-// Yandex Market: per-product card/non-card price display.
+// Yandex Market: each product selects card or non-card price.
 public class MainActivity extends Activity {
     public static final String CHANNEL_ID = "price_tracker";
     private static final String WORK_NAME = "price_check_periodic";
