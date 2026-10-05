@@ -36,10 +36,10 @@ public class PriceCheckWorker extends Worker {
                             double card = r.cardPrice >= 1 ? r.cardPrice : r.price;
                             double selected = product.showCard ? card : noCard;
                             double old = product.showCard ? product.cardPrice : product.noCardPrice;
-                            if (r.price < old - 0.001) {
+                            if (selected < old - 0.001) {
                                 db.updatePrice(product.id, selected, noCard, card, "down");
                                 notifyDrop(product, old, selected);
-                            } else if (r.price > old + 0.001) {
+                            } else if (selected > old + 0.001) {
                                 db.updatePrice(product.id, selected, noCard, card, "up");
                             } else {
                                 db.updatePrice(product.id, selected, noCard, card, "same");
