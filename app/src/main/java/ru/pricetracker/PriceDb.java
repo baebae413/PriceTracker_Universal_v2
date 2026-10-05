@@ -10,7 +10,7 @@ import java.util.List;
 
 public class PriceDb extends SQLiteOpenHelper {
     private static final String DB_NAME = "prices.db";
-    private static final int DB_VERSION = 3;
+    private static final int DB_VERSION = 4;
 
     public PriceDb(Context context) {
         super(context, DB_NAME, null, DB_VERSION);
@@ -28,6 +28,8 @@ public class PriceDb extends SQLiteOpenHelper {
                 "name TEXT NOT NULL," +
                 "site TEXT NOT NULL," +
                 "last_price REAL NOT NULL," +
+                "no_card_price REAL NOT NULL," +
+                "card_price REAL NOT NULL," +
                 "checked_at INTEGER NOT NULL," +
                 "status TEXT NOT NULL DEFAULT 'new'," +
                 "enabled INTEGER NOT NULL DEFAULT 1)");
@@ -44,15 +46,26 @@ public class PriceDb extends SQLiteOpenHelper {
             db.execSQL("ALTER TABLE products ADD COLUMN site TEXT NOT NULL DEFAULT ''");
             db.execSQL("ALTER TABLE products ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1");
         }
+        if (oldVersion < 4) {
+            db.execSQL("ALTER TABLE products ADD COLUMN no_card_price REAL NOT NULL DEFAULT 0");
+            db.execSQL("ALTER TABLE products ADD COLUMN card_price REAL NOT NULL DEFAULT 0");
+            db.execSQL("UPDATE products SET no_card_price=last_price, card_price=last_price WHERE no_card_price=0 OR card_price=0");
+        }
     }
 
     public synchronized long add(String url, String name, String site, double price) {
+        return add(url, name, site, price, price, price);
+    }
+
+    public synchronized long add(String url, String name, String site, double price, double noCardPrice, double cardPrice) {
         SQLiteDatabase db = getWritableDatabase();
         ContentValues v = new ContentValues();
         v.put("url", url);
         v.put("name", name == null || name.trim().isEmpty() ? site : name.trim());
         v.put("site", site == null ? "" : site);
         v.put("last_price", price);
+        v.put("no_card_price", noCardPrice);
+        v.put("card_price", cardPrice);
         v.put("checked_at", System.currentTimeMillis());
         v.put("status", "new");
         v.put("enabled", 1);
@@ -62,9 +75,15 @@ public class PriceDb extends SQLiteOpenHelper {
     }
 
     public synchronized void updatePrice(long id, double price, String status) {
+        updatePrice(id, price, price, price, status);
+    }
+
+    public synchronized void updatePrice(long id, double price, double noCardPrice, double cardPrice, String status) {
         SQLiteDatabase db = getWritableDatabase();
         ContentValues v = new ContentValues();
         v.put("last_price", price);
+        v.put("no_card_price", noCardPrice);
+        v.put("card_price", cardPrice);
         v.put("checked_at", System.currentTimeMillis());
         v.put("status", status);
         db.update("products", v, "id=?", new String[]{String.valueOf(id)});
@@ -103,6 +122,8 @@ public class PriceDb extends SQLiteOpenHelper {
             p.name = c.getString(c.getColumnIndexOrThrow("name"));
             p.site = c.getString(c.getColumnIndexOrThrow("site"));
             p.lastPrice = c.getDouble(c.getColumnIndexOrThrow("last_price"));
+            p.noCardPrice = c.getDouble(c.getColumnIndexOrThrow("no_card_price"));
+            p.cardPrice = c.getDouble(c.getColumnIndexOrThrow("card_price"));
             p.checkedAt = c.getLong(c.getColumnIndexOrThrow("checked_at"));
             p.status = c.getString(c.getColumnIndexOrThrow("status"));
             p.enabled = c.getInt(c.getColumnIndexOrThrow("enabled")) != 0;
@@ -168,6 +189,7 @@ public class PriceDb extends SQLiteOpenHelper {
         String url, name, site, status;
         double lastPrice;
         long checkedAt;
+        double noCardPrice, cardPrice;
         boolean enabled;
     }
 
