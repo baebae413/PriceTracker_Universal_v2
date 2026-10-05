@@ -19,6 +19,8 @@ public class UniversalParser {
         public String name = "";
         public String site = "";
         public double price = -1;
+        public double noCardPrice = -1;
+        public double cardPrice = -1;
     }
     public interface Callback { void success(Result result); void error(Exception error); }
 
@@ -42,11 +44,11 @@ public class UniversalParser {
                 webView.getSettings().setDatabaseEnabled(true);
                 webView.getSettings().setUserAgentString("Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36");
                 webView.setWebViewClient(new WebViewClient() {
-                    @Override public void onPageFinished(WebView view, String loadedUrl) { main.postDelayed(() -> prepareAndExtract(url, callback), 4500); }
+                    @Override public void onPageFinished(WebView view, String loadedUrl) { main.postDelayed(() -> prepareAndExtract(url, callback), isYandexMarket(originalUrl) ? 1200 : 4500); }
                     @Override public void onReceivedError(WebView view, int code, String description, String failingUrl) { fail(callback, "Не удалось открыть страницу: " + description); }
                 });
                 webView.loadUrl(url);
-                main.postDelayed(() -> { if (busy) fail(callback, "Страница загружается слишком долго"); }, 25000);
+                main.postDelayed(() -> { if (busy) fail(callback, "Страница загружается слишком долго"); }, 60000);
             } catch (Exception e) { fail(callback, e.getMessage() == null ? "Не удалось создать WebView" : e.getMessage()); }
         });
     }
@@ -68,7 +70,7 @@ public class UniversalParser {
                     "var before=pop.before!=null?pop.before:((!pop&&isPay)?old.withoutDiscount:null);" +
                     "return JSON.stringify({noCard:noCard,pay:pay,before:before,cart:cart,main:mainPrice,mainSubtype:main.subtype||'',title:meta.title||''});" +
                     "}catch(e){return JSON.stringify({error:String(e)})}})()";
-            webView.evaluateJavascript(js, value -> { yandexState = unquote(value); main.postDelayed(() -> extract(originalUrl, callback), 1000); });
+            webView.evaluateJavascript(js, value -> { yandexState = unquote(value); if (jsonNumber(yandexState, "noCard") >= 1 || jsonNumber(yandexState, "pay") >= 1 || !jsonString(yandexState, "title").trim().isEmpty()) { main.postDelayed(() -> extract(originalUrl, callback), 300); } else { main.postDelayed(() -> prepareAndExtract(originalUrl, callback), 1200); } });
             return;
         }
         if (!isOzon(originalUrl)) { extract(originalUrl, callback); return; }
