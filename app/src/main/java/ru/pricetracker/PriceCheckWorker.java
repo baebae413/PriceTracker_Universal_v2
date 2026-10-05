@@ -20,7 +20,8 @@ public class PriceCheckWorker extends Worker {
     }
 
     @Override public Result doWork() {
-        PriceDb db = new PriceDb(context);\n        boolean cardMode = context.getSharedPreferences("settings", Context.MODE_PRIVATE).getBoolean("price_mode", false);
+        PriceDb db = new PriceDb(context);
+        boolean cardMode = context.getSharedPreferences("settings", Context.MODE_PRIVATE).getBoolean("price_mode", false);
         List<PriceDb.Product> products = db.enabledProducts();
         if (products.isEmpty()) return Result.success();
 
