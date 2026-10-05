@@ -62,9 +62,10 @@ public class UniversalParser {
                     "var pr=first(C.price),bo=first(C.buyOption),meta=first(C.productCardMeta),pop={};" +
                     "Object.keys(C.popupInfo).some(function(k){var v=C.popupInfo[k];if(v&&v.type==='priceDetails'){pop=(v.params||{}).priceDetails||{};return true;}return false;});" +
                     "var main=pr.mainPrice||{}, mainPrice=main.price?main.price.value:null, isPay=main.subtype==='ya-card';" +
+                    "var cardCandidate=null;var walk=function(o,hasCard){if(!o||typeof o!=='object')return;var here=hasCard||(o.subtype==='ya-card');if(o.price&&typeof o.price==='object'&&o.price.value!=null&&here&&cardCandidate==null)cardCandidate=o.price.value;Object.keys(o).forEach(function(k){var v=o[k];if(typeof v==='object')walk(v,here||(String(k).toLowerCase().indexOf('card')>=0));});};walk(C,false);" +
                     "var old={}, oo=pr.oldPrices||[];oo.forEach(function(x){if(x&&x.type)old[x.type]=x.price?x.price.value:null;});" +
                     "var cart=bo.price?bo.price.value:null;" +
-                    "var pay=pop.pay!=null?pop.pay:(isPay?mainPrice:null);" +
+                    "var pay=cardCandidate!=null?cardCandidate:(pop.pay!=null?pop.pay:(isPay?mainPrice:null));" +
                     "var derived=isPay?(old.regular!=null?old.regular:(old.withoutDiscount!=null&&Object.keys(old).length===1?old.withoutDiscount:null)):(main.subtype?null:mainPrice);" +
                     "var noCard=pop.no_card!=null?pop.no_card:(cart!=null?cart:derived);" +
                     "var before=pop.before!=null?pop.before:((!pop&&isPay)?old.withoutDiscount:null);" +
