@@ -140,7 +140,8 @@ public class MainActivity extends Activity {
                 boolean cardMode = getPreferences(0).getBoolean(KEY_PRICE_MODE, false);
                 double noCard = r.noCardPrice >= 1 ? r.noCardPrice : r.price;
                 double card = r.cardPrice >= 1 ? r.cardPrice : r.price;
-                double selected = cardMode ? card : noCard;\n                long id = db.add(url, r.name, r.site, selected, noCard, card); refresh();
+                double selected = cardMode ? card : noCard;
+                long id = db.add(url, r.name, r.site, selected, noCard, card); refresh();
                 toast(id == -1 ? "Этот товар уже добавлен" : "Добавлено: " + r.name + " — " + formatPrice(r.price) + " ₽");
             }
             @Override public void error(Exception e) { toast("Не удалось прочитать товар: " + e.getMessage()); refresh(); }
