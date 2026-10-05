@@ -106,9 +106,9 @@ public class UniversalParser {
 
     private Result parse(String data, String url) {
         Result r = new Result(); r.site = domain(url);
-        String title = field(data, "title"), body = field(data, "body"), html = field(data, "html");
+        String title = field(data, "title"), body = field(data, "body"), html = field(data, "html"), ogTitle = field(data, "ogTitle");
         String metaPrice = field(data, "metaPrice"), itemPrice = field(data, "itemPrice"), ozonPrice = field(data, "ozonPrice"), ozonState = field(data, "ozonState"), ozonApi = field(data, "ozonApi"), yandexState = field(data, "yandexState"), ld = field(data, "ld");
-        String name = firstNonEmpty(jsonString(ld, "name"), jsonString(html, "name"), title.replaceAll("\\s*[|–—-]\\s*.*$", "").trim());
+        String name = firstNonEmpty(jsonString(ld, "name"), jsonString(html, "name"), ogTitle, title.replaceAll("\\s*[|–—-]\\s*.*$", "").trim());
         r.name = clean(name);
 
         if (isYandexMarket(url)) {
