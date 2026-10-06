@@ -73,7 +73,7 @@ public class UniversalParser {
                     "for(var k in obj){if(!Object.prototype.hasOwnProperty.call(obj,k))continue;var kl=String(k).toLowerCase();if(keys.indexOf(kl)>=0){var n=first(obj[k]);if(n>=1)return n;}var child=obj[k];if(child&&typeof child==='object'){var n=findKey(child,keys,depth+1);if(n>=1)return n;}}return -1;};" +
                     "if(root){" +
                     " var dp=findKey(root,['discountedprice'],0); var pv=findKey(root,['price'],0); var gp=findKey(root,['greenprice','green_price','cardprice','card_price'],0);" +
-                    " out.noCard=dp>=1?dp:pv; out.card=gp>=1?gp:-1;" +
+                    " out.noCard=pv>=1?pv:-1; out.card=dp>=1?dp:(gp>=1?gp:-1);" +
                     "}" +
                     "var body=(document.body?document.body.innerText:'').replace(/\\s+/g,' ');" +
                     "var cardMatch=body.match(/([0-9]{1,3}(?:[\\s\\u00a0\\u202f][0-9]{3})+|[0-9]{2,7})\\s*₽[^\\n]{0,80}(?:карт|Яндекс|плюс)/i);" +
