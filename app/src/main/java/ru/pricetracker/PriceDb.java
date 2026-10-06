@@ -79,6 +79,18 @@ public class PriceDb extends SQLiteOpenHelper {
         return id;
     }
 
+    public synchronized void updateByUrl(String url, String name, String site, double noCardPrice, double cardPrice) {
+        SQLiteDatabase db = getWritableDatabase();
+        ContentValues v = new ContentValues();
+        v.put("name", name == null || name.trim().isEmpty() ? site : name.trim());
+        v.put("site", site == null ? "" : site);
+        v.put("last_price", noCardPrice);
+        v.put("no_card_price", noCardPrice);
+        v.put("card_price", cardPrice);
+        v.put("checked_at", System.currentTimeMillis());
+        db.update("products", v, "url=?", new String[]{url});
+    }
+
     public synchronized void updatePrice(long id, double price, String status) {
         updatePrice(id, price, price, price, status);
     }
