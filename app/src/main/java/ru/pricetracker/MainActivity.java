@@ -138,9 +138,10 @@ public class MainActivity extends Activity {
             @Override public void success(UniversalParser.Result r) {
                 if (r.price < 1 || r.price > 100000000) { error(new Exception("Цена не найдена")); return; }
                 double noCard = r.noCardPrice >= 1 ? r.noCardPrice : r.price;
-                double card = r.cardPrice >= 1 ? r.cardPrice : r.price;
-                long id = db.add(url, r.name, r.site, noCard, noCard, card); refresh();
-                toast(id == -1 ? "Этот товар уже добавлен" : "Добавлено: " + r.name + " — " + formatPrice(noCard) + " ₽");
+                double card = r.cardPrice >= 1 ? r.cardPrice : -1;
+                long id = db.add(url, r.name, r.site, noCard, noCard, card);
+                if (id == -1) { db.updateByUrl(url, r.name, r.site, noCard, card); toast("Товар обновлён: " + r.name); } else { toast("Добавлено: " + r.name + " — " + formatPrice(noCard) + " ₽"); }
+                refresh();
             }
             @Override public void error(Exception e) { toast("Не удалось прочитать товар: " + e.getMessage()); refresh(); }
         });
@@ -158,8 +159,8 @@ public class MainActivity extends Activity {
         new UniversalParser(this).product(p.url, new UniversalParser.Callback() {
             @Override public void success(UniversalParser.Result r) { boolean cardMode = p.showCard;
                 double noCard = r.noCardPrice >= 1 ? r.noCardPrice : r.price;
-                double card = r.cardPrice >= 1 ? r.cardPrice : r.price;
-                double selected = cardMode ? card : noCard;
+                double card = r.cardPrice >= 1 ? r.cardPrice : -1;
+                double selected = cardMode && card >= 1 ? card : noCard;
                 double old = cardMode ? p.cardPrice : p.noCardPrice;
                 String status = selected < old - 0.001 ? "down" : (selected > old + 0.001 ? "up" : "same"); db.updatePrice(p.id, selected, noCard, card, status); checkNext(products, index + 1, down + ("down".equals(status) ? 1 : 0), up + ("up".equals(status) ? 1 : 0), same + ("same".equals(status) ? 1 : 0)); }
             @Override public void error(Exception e) { checkNext(products, index + 1, down, up, same); }
