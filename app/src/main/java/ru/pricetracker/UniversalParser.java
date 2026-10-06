@@ -61,7 +61,7 @@ public class UniversalParser {
             // one offer contains ordinary/discounted price and greenPrice (Ya-Card).
             // We poll briefly, but never block product addition indefinitely.
             String js = "(function(){try{" +
-                    "var out={offerFound:false,offerData:'',noCard:-1,card:-1,title:'',discount:-1};" +
+                    "var out={offerFound:false,offerData:'',noCard:-1,card:-1,title:'',discount:-1,visualNoCard:-1,visualCard:-1};" +
                     "var titleEl=document.querySelector('[data-auto=\"productCardTitle\"], h1');" +
                     "out.title=titleEl?(titleEl.innerText||titleEl.textContent||''):'';" +
                     "var offer=document.querySelector('[data-zone-name=\"cpa-offer\"]');" +
@@ -73,9 +73,9 @@ public class UniversalParser {
                     "for(var k in obj){if(!Object.prototype.hasOwnProperty.call(obj,k))continue;var kl=String(k).toLowerCase();if(keys.indexOf(kl)>=0){var n=first(obj[k]);if(n>=1)return n;}var child=obj[k];if(child&&typeof child==='object'){var n=findKey(child,keys,depth+1);if(n>=1)return n;}}return -1;};" +
                     "if(root){" +
                     " var dp=findKey(root,['discountedprice'],0); var pv=findKey(root,['price'],0); var gp=findKey(root,['greenprice','green_price','cardprice','card_price'],0);" +
-                    " out.noCard=pv>=1?pv:-1; out.card=dp>=1?dp:(gp>=1?gp:-1);" +
+                    " out.noCard=pv>=1?pv:-1; out.card=gp>=1?gp:(dp>=1?dp:-1);" +
                     "}" +
-                    "var body=(document.body?document.body.innerText:'').replace(/\\s+/g,' ');" +
+                    "var priceNum=function(s){var m=String(s||'').match(/([0-9]{1,3}(?:[\s\u00a0\u202f][0-9]{3})+|[0-9]{2,7})\s*₽/);return m?Number(m[1].replace(/[\s\u00a0\u202f]/g,'')):-1;};var clickNoCard=function(){var es=document.querySelectorAll('button,[role="button"],span,div');for(var i=0;i<es.length;i++){var t=(es[i].innerText||'').trim().toLowerCase();if(t==='без карты'||t.indexOf('цена без карты')>=0||t.indexOf('обычная цена')>=0){try{es[i].click();}catch(e){}break;}}};clickNoCard();var els=document.querySelectorAll('*');for(var i=0;i<els.length;i++){var e=els[i],t=(e.innerText||'').trim();if(!t||t.length>80||t.indexOf('₽')<0)continue;var p=priceNum(t);if(p<1)continue;var col=getComputedStyle(e).color||'',mcol=col.match(/rgba?\((\d+)[, ]+(\d+)[, ]+(\d+)/i);if(mcol){var rr=+mcol[1],gg=+mcol[2],bb=+mcol[3];if(gg>rr*1.25&&gg>bb*1.15&&gg>80){if(out.visualCard<1)out.visualCard=p;}else if(Math.max(rr,gg,bb)-Math.min(rr,gg,bb)<45&&rr<180){if(out.visualNoCard<1)out.visualNoCard=p;}}}if(out.visualNoCard>=1)out.noCard=out.visualNoCard;if(out.visualCard>=1)out.card=out.visualCard;var body=(document.body?document.body.innerText:'').replace(/\\s+/g,' ');" +
                     "var cardMatch=body.match(/([0-9]{1,3}(?:[\\s\\u00a0\\u202f][0-9]{3})+|[0-9]{2,7})\\s*₽[^\\n]{0,80}(?:карт|Яндекс|плюс)/i);" +
                     "var all=body.match(/([0-9]{1,3}(?:[\\s\\u00a0\\u202f][0-9]{3})+|[0-9]{2,7})\\s*₽/g)||[];" +
                     "if(out.card<1&&cardMatch)out.card=Number(cardMatch[1].replace(/[\\s\\u00a0\\u202f]/g,''));" +
