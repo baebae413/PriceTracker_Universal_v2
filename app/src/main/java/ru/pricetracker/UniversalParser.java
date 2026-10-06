@@ -74,7 +74,7 @@ public class UniversalParser {
                     "var raw=offer?offer.getAttribute('data-zone-data')||'':'';var root=null;try{root=raw?JSON.parse(raw):null;}catch(e){}" +
                     "var num=function(v){if(v==null)return -1;if(typeof v==='number')return isFinite(v)&&v>=1?v:-1;if(typeof v==='string'){var n=Number(v.replace(/[^0-9.,]/g,'').replace(',','.'));return isFinite(n)&&n>=1?n:-1;}if(typeof v==='object'){if(v.value!=null){var n=num(v.value);if(n>=1)return n;}if(v.price!=null){var n=num(v.price);if(n>=1)return n;}}return -1;};" +
                     "var findKey=function(o,keys,d){if(!o||d>12)return -1;if(Array.isArray(o)){for(var i=0;i<o.length;i++){var n=findKey(o[i],keys,d+1);if(n>=1)return n;}return -1;}if(typeof o!=='object')return -1;for(var k in o){if(!Object.prototype.hasOwnProperty.call(o,k))continue;var kl=String(k).toLowerCase();if(keys.indexOf(kl)>=0){var n=num(o[k]);if(n>=1)return n;}var ch=o[k];if(ch&&typeof ch==='object'){var n=findKey(ch,keys,d+1);if(n>=1)return n;}}return -1;};" +
-                    "if(root){var gp=findKey(root,['greenprice','green_price','cardprice','card_price'],0);var dp=findKey(root,['discountedprice'],0);card=gp>=1?gp:(dp>=1?dp:-1);}" +
+                    "if(root){var gp=findKey(root,['greenprice','green_price','cardprice','card_price'],0);var dp=findKey(root,['discountedprice'],0);if(gp>=1)card=gp;else if(dp>=1)card=dp;}" +
                     "return JSON.stringify({noCard:noCard,card:card,pay:main.subtype==='ya-card'?mainPrice:null,before:before,cart:cart,main:mainPrice,mainSubtype:main.subtype||'',title:meta.title||''});" +
                     "}catch(e){return JSON.stringify({error:String(e)})}})()";
             webView.evaluateJavascript(js, value -> {
