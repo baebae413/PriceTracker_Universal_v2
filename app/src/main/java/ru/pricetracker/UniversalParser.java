@@ -76,7 +76,6 @@ public class UniversalParser {
                 yandexState = unquote(value);
                 yandexAttempts++;
                 double cardNow = jsonNumber(yandexState, "card");
-                double titleNow = jsonString(yandexState, "title").trim().isEmpty() ? -1 : 1;
                 if (cardNow >= 1 || yandexAttempts >= 6) {
                     main.postDelayed(() -> finishYandexPrices(originalUrl, callback), 300);
                 } else {
