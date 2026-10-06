@@ -65,13 +65,13 @@ public class UniversalParser {
                     "var cardCandidate=null;var walk=function(o,hasCard){if(!o||typeof o!=='object')return;var here=hasCard||(o.subtype==='ya-card');if(o.price&&typeof o.price==='object'&&o.price.value!=null&&here&&cardCandidate==null)cardCandidate=o.price.value;Object.keys(o).forEach(function(k){var v=o[k];if(typeof v==='object')walk(v,here||(String(k).toLowerCase().indexOf('card')>=0));});};walk(C,false);" +
                     "var old={}, oo=pr.oldPrices||[];oo.forEach(function(x){if(x&&x.type)old[x.type]=x.price?x.price.value:null;});" +
                     "var cart=bo.price?bo.price.value:null;" +
-                    "var pay=cardCandidate!=null?cardCandidate:(pop.pay!=null?pop.pay:(isPay?mainPrice:null));" +
+                    "var pay=cardCandidate!=null?cardCandidate:(pop.pay!=null?pop.pay:null);" +
                     "var derived=isPay?(old.regular!=null?old.regular:(old.withoutDiscount!=null&&Object.keys(old).length===1?old.withoutDiscount:null)):(main.subtype?null:mainPrice);" +
                     "var noCard=pop.no_card!=null?pop.no_card:(cart!=null?cart:derived);" +
                     "var before=pop.before!=null?pop.before:((!pop&&isPay)?old.withoutDiscount:null);" +
                     "var bodyText=document.body?document.body.innerText:'';" +
                     "var cardLabel=/(?:цена\\s*(?:с|по)\\s*карт(?:е|ой)|с\\s*картой|по\\s*карте)(?:\\s+яндекс\\s*(?:пэй|плюс))?/i;" +
-                    "var cardText='';var cm=cardLabel.exec(bodyText);if(cm){var a=Math.max(0,cm.index-180),b=Math.min(bodyText.length,cm.index+cm[0].length+180),near=bodyText.slice(a,b);var pm=near.match(/(\\d[\\d\\s\\u00a0\\u202f.]*)\\s*₽/);if(pm)cardText=pm[1];}" +
+                    "var cardText='';var cm=cardLabel.exec(bodyText);if(cm){var near=bodyText.slice(cm.index+cm[0].length,Math.min(bodyText.length,cm.index+cm[0].length+350));var pm=near.match(/(?:^|[^\\d])(\\d{1,3}(?:(?:[\\s\\u00a0\\u202f.]\\s*)\\d{3})+|\\d+)(?:[.,]\\d{1,2})?\\s*₽/);if(pm)cardText=pm[1];}" +
                     "return JSON.stringify({noCard:noCard,pay:pay,before:before,cart:cart,main:mainPrice,mainSubtype:main.subtype||'',title:meta.title||'',cardText:cardText,bodyText:bodyText.slice(0,60000)});" +
                     "}catch(e){return JSON.stringify({error:String(e)})}})()";
             webView.evaluateJavascript(js, value -> { yandexState = unquote(value); if (jsonNumber(yandexState, "noCard") >= 1 || jsonNumber(yandexState, "pay") >= 1 || !jsonString(yandexState, "title").trim().isEmpty()) { main.postDelayed(() -> extract(originalUrl, callback), 300); } else { main.postDelayed(() -> prepareAndExtract(originalUrl, callback), 1200); } });
