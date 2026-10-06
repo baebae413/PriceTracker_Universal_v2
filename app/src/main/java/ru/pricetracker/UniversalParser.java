@@ -75,7 +75,7 @@ public class UniversalParser {
                     " var dp=findKey(root,['discountedprice'],0); var pv=findKey(root,['price'],0); var gp=findKey(root,['greenprice','green_price','cardprice','card_price'],0);" +
                     " out.noCard=pv>=1?pv:-1; out.card=gp>=1?gp:(dp>=1?dp:-1);" +
                     "}" +
-                    "var priceNum=function(s){var z=String(s||'').split('₽')[0],x='';for(var j=0;j<z.length;j++){var c=z.charCodeAt(j);if(c>=48&&c<=57)x+=z.charAt(j);}return x?Number(x):-1;};var clickNoCard=function(){var es=document.querySelectorAll('button,span,div');for(var i=0;i<es.length;i++){var t=(es[i].innerText||'').trim().toLowerCase();if(t==='без карты'||t.indexOf('цена без карты')>=0||t.indexOf('обычная цена')>=0){try{es[i].click();}catch(e){}break;}}};clickNoCard();var els=document.querySelectorAll('*');for(var i=0;i<els.length;i++){var e=els[i],t=(e.innerText||'').trim();if(!t||t.length>80||t.indexOf('₽')<0)continue;var p=priceNum(t);if(p<1)continue;var col=getComputedStyle(e).color||'';var parts=col.replace('rgba(','').replace('rgb(','').replace(')','').split(',');if(parts.length>=3){var rr=+parts[0],gg=+parts[1],bb=+parts[2];if(gg>rr*1.25&&gg>bb*1.15&&gg>80){if(out.visualCard<1)out.visualCard=p;}else if(Math.max(rr,gg,bb)-Math.min(rr,gg,bb)<45&&rr<180){if(out.visualNoCard<1)out.visualNoCard=p;}}}if(out.visualNoCard>=1)out.noCard=out.visualNoCard;if(out.visualCard>=1)out.card=out.visualCard;var body=document.body?document.body.innerText:'';" +
+                    "var priceNum=function(s){var z=String(s||'').split('₽')[0],x='';for(var j=0;j<z.length;j++){var c=z.charCodeAt(j);if(c>=48&&c<=57)x+=z.charAt(j);}return x?Number(x):-1;};var els=document.querySelectorAll('*');for(var i=0;i<els.length;i++){var e=els[i],t=(e.innerText||'').trim();if(!t||t.length>80||t.indexOf('₽')<0)continue;var p=priceNum(t);if(p<1)continue;var col=getComputedStyle(e).color||'';var parts=col.replace('rgba(','').replace('rgb(','').replace(')','').split(',');if(parts.length>=3){var rr=+parts[0],gg=+parts[1],bb=+parts[2];if(gg>rr*1.25&&gg>bb*1.15&&gg>80){if(out.visualCard<1)out.visualCard=p;}}}if(out.visualCard>=1)out.card=out.visualCard;var body=document.body?document.body.innerText:'';" +
                     "var cardMatch=body.match(/([0-9]{1,3}(?:[\\s\\u00a0\\u202f][0-9]{3})+|[0-9]{2,7})\\s*₽[^\\n]{0,80}(?:карт|Яндекс|плюс)/i);" +
                     "var all=body.match(/([0-9]{1,3}(?:[\\s\\u00a0\\u202f][0-9]{3})+|[0-9]{2,7})\\s*₽/g)||[];" +
                     "if(out.card<1&&cardMatch)out.card=Number(cardMatch[1].replace(/[\\s\\u00a0\\u202f]/g,''));" +
@@ -117,12 +117,9 @@ public class UniversalParser {
                 String raw = unquote(value);
                 Result result = parse(raw, originalUrl);
                 if (isYandexMarket(originalUrl)) {
-                    double yp = jsonNumber(yandexState, "noCard");
+                    double yp = result.price;
                     double ycard = jsonNumber(yandexState, "card");
-                    if (validPrice(yp)) {
-                        result.noCardPrice = yp;
-                        result.price = yp;
-                    }
+                    if (validPrice(yp)) result.noCardPrice = yp;
                     if (validPrice(ycard)) result.cardPrice = ycard;
                     String yt = jsonString(yandexState, "title");
                     if (!yt.trim().isEmpty() && !yt.equalsIgnoreCase("%og_title%")) result.name = clean(yt);
@@ -140,12 +137,6 @@ public class UniversalParser {
         String metaPrice = field(data, "metaPrice"), itemPrice = field(data, "itemPrice"), ozonPrice = field(data, "ozonPrice"), ozonState = field(data, "ozonState"), ozonApi = field(data, "ozonApi"), yandexState = field(data, "yandexState"), ld = field(data, "ld");
         String name = firstNonEmpty(jsonString(ld, "name"), jsonString(html, "name"), ogTitle, title.replaceAll("\\s*[|–—-]\\s*.*$", "").trim());
         r.name = clean(name);
-
-        if (isYandexMarket(url)) {
-            double yp = jsonNumber(yandexState, "noCard");
-            if (validPrice(yp)) r.price = yp;
-            if (r.name.trim().isEmpty()) r.name = jsonString(yandexState, "title");
-        }
 
         // Ozon puts the actual visible current price into the webPrice widget.
         // Read that widget before scanning the whole page, because descriptions
