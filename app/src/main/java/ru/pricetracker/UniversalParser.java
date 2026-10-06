@@ -57,48 +57,65 @@ public class UniversalParser {
 
     private void prepareAndExtract(String originalUrl, Callback callback) {
         if (isYandexMarket(originalUrl)) {
-            // Yandex approach based on the cpa-offer/data-zone-data structure:
-            // one offer contains ordinary/discounted price and greenPrice (Ya-Card).
-            // We poll briefly, but never block product addition indefinitely.
+            // Yandex has two prices in different UI states:
+            // 1) the green Yandex Card price is visible initially;
+            // 2) the ordinary price is revealed after pressing "без карты".
+            // Capture the card price BEFORE switching the UI, then capture
+            // the ordinary gray price AFTER the switch.
             String js = "(function(){try{" +
-                    "var out={offerFound:false,offerData:'',noCard:-1,card:-1,title:'',discount:-1,visualNoCard:-1,visualCard:-1};" +
-                    "var titleEl=document.querySelector('[data-auto=\"productCardTitle\"], h1');" +
+                    "var out={offerFound:false,offerData:'',noCard:-1,card:-1,title:'',discount:-1};" +
+                    "var titleEl=document.querySelector('[data-auto=\\"productCardTitle\\"],h1');" +
                     "out.title=titleEl?(titleEl.innerText||titleEl.textContent||''):'';" +
-                    "var offer=document.querySelector('[data-zone-name=\"cpa-offer\"]');" +
+                    "var offer=document.querySelector('[data-zone-name=\\"cpa-offer\\"]');" +
                     "var raw=offer?offer.getAttribute('data-zone-data')||'':'';" +
                     "if(offer){out.offerFound=true;out.offerData=raw.slice(0,180000);}" +
                     "var root=null;try{root=raw?JSON.parse(raw):null;}catch(e){}" +
-                    "var first=function(v){if(v==null)return -1;if(typeof v==='number')return isFinite(v)&&v>=1?v:-1;if(typeof v==='string'){var n=Number(v.replace(' ',''));return isFinite(n)&&n>=1?n:-1;}if(typeof v==='object'){if(v.value!=null){var n=first(v.value);if(n>=1)return n;}if(v.price!=null){var n=first(v.price);if(n>=1)return n;}}return -1;};" +
+                    "var first=function(v){if(v==null)return -1;if(typeof v==='number')return isFinite(v)&&v>=1?v:-1;if(typeof v==='string'){var n=Number(v.replace(/[^0-9.,]/g,'').replace(',','.'));return isFinite(n)&&n>=1?n:-1;}if(typeof v==='object'){if(v.value!=null){var n=first(v.value);if(n>=1)return n;}if(v.price!=null){var n=first(v.price);if(n>=1)return n;}}return -1;};" +
                     "var findKey=function(obj,keys,depth){if(!obj||depth>12)return -1;if(Array.isArray(obj)){for(var i=0;i<obj.length;i++){var n=findKey(obj[i],keys,depth+1);if(n>=1)return n;}return -1;}if(typeof obj!=='object')return -1;" +
                     "for(var k in obj){if(!Object.prototype.hasOwnProperty.call(obj,k))continue;var kl=String(k).toLowerCase();if(keys.indexOf(kl)>=0){var n=first(obj[k]);if(n>=1)return n;}var child=obj[k];if(child&&typeof child==='object'){var n=findKey(child,keys,depth+1);if(n>=1)return n;}}return -1;};" +
-                    "if(root){" +
-                    " var dp=findKey(root,['discountedprice'],0); var pv=findKey(root,['price'],0); var gp=findKey(root,['greenprice','green_price','cardprice','card_price'],0);" +
-                    " out.noCard=pv>=1?pv:-1; out.card=gp>=1?gp:(dp>=1?dp:-1);" +
-                    "}" +
-                    "var priceNum=function(s){var z=String(s||'').split('₽')[0],x='';for(var j=0;j<z.length;j++){var c=z.charCodeAt(j);if(c>=48&&c<=57)x+=z.charAt(j);}return x?Number(x):-1;};var els=document.querySelectorAll('*');for(var i=0;i<els.length;i++){var e=els[i],t=(e.innerText||'').trim();if(!t||t.length>80||t.indexOf('₽')<0)continue;var p=priceNum(t);if(p<1)continue;var col=getComputedStyle(e).color||'';var parts=col.replace('rgba(','').replace('rgb(','').replace(')','').split(',');if(parts.length>=3){var rr=+parts[0],gg=+parts[1],bb=+parts[2];if(gg>rr*1.25&&gg>bb*1.15&&gg>80){if(out.visualCard<1)out.visualCard=p;}}}if(out.visualCard>=1)out.card=out.visualCard;var body=document.body?document.body.innerText:'';" +
-                    "var cardMatch=body.match(/([0-9]{1,3}(?:[\\s\\u00a0\\u202f][0-9]{3})+|[0-9]{2,7})\\s*₽[^\\n]{0,80}(?:карт|Яндекс|плюс)/i);" +
-                    "var all=body.match(/([0-9]{1,3}(?:[\\s\\u00a0\\u202f][0-9]{3})+|[0-9]{2,7})\\s*₽/g)||[];" +
-                    "if(out.card<1&&cardMatch)out.card=Number(cardMatch[1].replace(/[\\s\\u00a0\\u202f]/g,''));" +
-                    "if(out.noCard<1&&all.length)out.noCard=Number(all[0].replace(/[^0-9]/g,''));" +
-                    "return JSON.stringify(out);" +
+                    "if(root){var gp=findKey(root,['greenprice','green_price','cardprice','card_price'],0);var dp=findKey(root,['discountedprice'],0);var pv=findKey(root,['price'],0);out.card=gp>=1?gp:(dp>=1?dp:-1);}" +
+                    "var priceNum=function(s){var m=String(s||'').match(/([0-9]{1,3}(?:[\\s\\u00a0\\u202f][0-9]{3})+|[0-9]{2,7})\\s*₽/);return m?Number(m[1].replace(/[\\s\\u00a0\\u202f]/g,'')):-1;};" +
+                    "var findColored=function(wantGray){var els=document.querySelectorAll('*');var best=-1;for(var i=0;i<els.length;i++){var e=els[i],t=(e.innerText||'').trim();if(!t||t.length>50||t.indexOf('₽')<0)continue;var p=priceNum(t);if(p<1)continue;var col=getComputedStyle(e).color||'';var parts=col.replace('rgba(','').replace('rgb(','').replace(')','').split(',');if(parts.length<3)continue;var rr=+parts[0],gg=+parts[1],bb=+parts[2];if(wantGray){if(Math.max(rr,gg,bb)-Math.min(rr,gg,bb)<18&&rr<180){best=p;break;}}else{if(gg>rr*1.25&&gg>bb*1.15&&gg>80){best=p;break;}}}return best;};" +
+                    "var initialGray=findColored(true);if(initialGray>=1&&out.card<1)out.noCard=initialGray;" +
+                    "var clickables=document.querySelectorAll('button,[role=button],a,div,span');for(var i=0;i<clickables.length;i++){var tx=(clickables[i].innerText||clickables[i].textContent||'').trim().toLowerCase();if(tx==='без карты'||tx.indexOf('цена без карты')>=0||tx.indexOf('обычная цена')>=0){try{clickables[i].click();}catch(e){}break;}}" +
+                    "return JSON.stringify({phase:'clicked',title:out.title,card:out.card,noCard:out.noCard,offerFound:out.offerFound,offerData:out.offerData});" +
                     "}catch(e){return JSON.stringify({error:String(e),noCard:-1,card:-1,title:''})}})()";
             webView.evaluateJavascript(js, value -> {
                 yandexState = unquote(value);
                 yandexAttempts++;
-                boolean ready = jsonNumber(yandexState, "noCard") >= 1
-                        || jsonNumber(yandexState, "card") >= 1
-                        || !jsonString(yandexState, "title").trim().isEmpty();
-                if (ready || yandexAttempts >= 6) {
-                    main.postDelayed(() -> extract(originalUrl, callback), 250);
-                } else {
-                    main.postDelayed(() -> prepareAndExtract(originalUrl, callback), 900);
-                }
+                main.postDelayed(() -> finishYandexPrices(originalUrl, callback), 900);
             });
             return;
         }
         if (!isOzon(originalUrl)) { extract(originalUrl, callback); return; }
         String js = "(function(){try{if(window.__ptOzonApiStarted)return 'started';window.__ptOzonApiStarted=true;fetch('/api/composer-api.bx/page/json/v2?url='+encodeURIComponent(location.pathname+location.search),{credentials:'include'}).then(function(r){return r.text()}).then(function(t){window.__ptOzonApi=t}).catch(function(){window.__ptOzonApi=''});return 'started';}catch(e){return 'error'}})()";
         webView.evaluateJavascript(js, value -> main.postDelayed(() -> extract(originalUrl, callback), 2500));
+    }
+
+    private void finishYandexPrices(String originalUrl, Callback callback) {
+        if (!busy || webView == null) return;
+        String js = "(function(){try{" +
+                "var priceNum=function(s){var m=String(s||'').match(/([0-9]{1,3}(?:[\\s\\u00a0\\u202f][0-9]{3})+|[0-9]{2,7})\\s*₽/);return m?Number(m[1].replace(/[\\s\\u00a0\\u202f]/g,'')):-1;};" +
+                "var gray=-1,els=document.querySelectorAll('*');" +
+                "for(var i=0;i<els.length;i++){var e=els[i],t=(e.innerText||'').trim();if(!t||t.length>50||t.indexOf('₽')<0)continue;var p=priceNum(t);if(p<1)continue;var col=getComputedStyle(e).color||'';var parts=col.replace('rgba(','').replace('rgb(','').replace(')','').split(',');if(parts.length>=3){var rr=+parts[0],gg=+parts[1],bb=+parts[2];if(Math.max(rr,gg,bb)-Math.min(rr,gg,bb)<18&&rr<180){gray=p;break;}}}" +
+                "if(gray<1){var body=document.body?document.body.innerText:'';var m=body.match(/([0-9]{1,3}(?:[\\s\\u00a0\\u202f][0-9]{3})+|[0-9]{2,7})\\s*₽/g)||[];for(var j=0;j<m.length;j++){var p=priceNum(m[j]);if(p>=1&&p!==Number(JSON.parse('\\\"'+''+'\\\"')||-999)){gray=p;break;}}}" +
+                "return JSON.stringify({noCard:gray});" +
+                "}catch(e){return JSON.stringify({noCard:-1,error:String(e)})}})()";
+        webView.evaluateJavascript(js, value -> {
+            try {
+                String after = unquote(value);
+                double gray = jsonNumber(after, "noCard");
+                if (validPrice(gray)) {
+                    String old = yandexState;
+                    double card = jsonNumber(old, "card");
+                    String title = jsonString(old, "title");
+                    yandexState = "{\\"noCard\\":"+gray+",\\"card\\":"+card+",\\"title\\":\\""+title.replace("\\","\\\\").replace("\"","\\\"")+"\\"}";
+                }
+                extract(originalUrl, callback);
+            } catch (Exception e) {
+                extract(originalUrl, callback);
+            }
+        });
     }
 
     private void extract(String originalUrl, Callback callback) {
@@ -117,9 +134,12 @@ public class UniversalParser {
                 String raw = unquote(value);
                 Result result = parse(raw, originalUrl);
                 if (isYandexMarket(originalUrl)) {
-                    double yp = result.price;
+                    double yp = jsonNumber(yandexState, "noCard");
                     double ycard = jsonNumber(yandexState, "card");
-                    if (validPrice(yp)) result.noCardPrice = yp;
+                    if (validPrice(yp)) {
+                        result.price = yp;
+                        result.noCardPrice = yp;
+                    }
                     if (validPrice(ycard)) result.cardPrice = ycard;
                     String yt = jsonString(yandexState, "title");
                     if (!yt.trim().isEmpty() && !yt.equalsIgnoreCase("%og_title%")) result.name = clean(yt);
