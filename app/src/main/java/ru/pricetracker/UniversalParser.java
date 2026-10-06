@@ -109,6 +109,7 @@ public class UniversalParser {
                     String old = yandexState;
                     double card = jsonNumber(old, "card");
                     yandexState = "{\\"noCard\\":"+gray+",\\"card\\":"+card+"}";
+                }
                 extract(originalUrl, callback);
             } catch (Exception e) {
                 extract(originalUrl, callback);
