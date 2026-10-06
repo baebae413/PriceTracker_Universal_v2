@@ -57,32 +57,39 @@ public class UniversalParser {
 
     private void prepareAndExtract(String originalUrl, Callback callback) {
         if (isYandexMarket(originalUrl)) {
-            String js = "(function(){try{var C={price:{},buyOption:{},productCardMeta:{},popupInfo:{}};" +
-                    "document.querySelectorAll('noframes[data-apiary=\\\"patch\\\"]').forEach(function(e){try{var d=JSON.parse(e.textContent||'{}');var cc=d.collections||{};" +
-                    "Object.keys(C).forEach(function(n){var x=cc[n];if(x&&typeof x==='object')Object.keys(x).forEach(function(k){C[n][k]=x[k]});});}catch(x){}});" +
-                    "var first=function(o){var a=Object.keys(o);for(var i=0;i<a.length;i++){var v=o[a[i]];if(v&&typeof v==='object')return v;}return {};};" +
-                    "var pr=first(C.price),bo=first(C.buyOption),meta=first(C.productCardMeta),pop={};" +
-                    "Object.keys(C.popupInfo).some(function(k){var v=C.popupInfo[k];if(v&&v.type==='priceDetails'){pop=(v.params||{}).priceDetails||{};return true;}return false;});" +
-                    "var main=pr.mainPrice||{}, mainPrice=main.price?main.price.value:null, isPay=main.subtype==='ya-card';" +
-                    "var old={}, oo=pr.oldPrices||[];oo.forEach(function(x){if(x&&x.type)old[x.type]=x.price?x.price.value:null;});" +
-                    "var cart=bo.price?bo.price.value:null;" +
-                    "var derived=isPay?(old.regular!=null?old.regular:(old.withoutDiscount!=null&&Object.keys(old).length===1?old.withoutDiscount:null)):(main.subtype?null:mainPrice);" +
-                    "var noCard=pop.no_card!=null?pop.no_card:(cart!=null?cart:derived);" +
-                    "var before=pop.before!=null?pop.before:((!pop&&isPay)?old.withoutDiscount:null);" +
-                    "var card=isPay&&mainPrice!=null?mainPrice:-1;" +
+            // Yandex approach based on the cpa-offer/data-zone-data structure:
+            // one offer contains ordinary/discounted price and greenPrice (Ya-Card).
+            // We poll briefly, but never block product addition indefinitely.
+            String js = "(function(){try{" +
+                    "var out={offerFound:false,offerData:'',noCard:-1,card:-1,title:'',discount:-1};" +
+                    "var titleEl=document.querySelector('[data-auto=\\\"productCardTitle\\\"], h1');" +
+                    "out.title=titleEl?(titleEl.innerText||titleEl.textContent||''):'';" +
                     "var offer=document.querySelector('[data-zone-name=\\\"cpa-offer\\\"]');" +
-                    "var raw=offer?offer.getAttribute('data-zone-data')||'':'';var root=null;try{root=raw?JSON.parse(raw):null;}catch(e){}" +
-                    "var num=function(v){if(v==null)return -1;if(typeof v==='number')return isFinite(v)&&v>=1?v:-1;if(typeof v==='string'){var n=Number(v.replace(/[^0-9.,]/g,'').replace(',','.'));return isFinite(n)&&n>=1?n:-1;}if(typeof v==='object'){if(v.value!=null){var n=num(v.value);if(n>=1)return n;}if(v.price!=null){var n=num(v.price);if(n>=1)return n;}}return -1;};" +
-                    "var findObjectKey=function(o,key,d){if(!o||d>12)return null;if(Array.isArray(o)){for(var i=0;i<o.length;i++){var r=findObjectKey(o[i],key,d+1);if(r!=null)return r;}return null;}if(typeof o!=='object')return null;for(var k in o){if(!Object.prototype.hasOwnProperty.call(o,k))continue;if(String(k).toLowerCase()===key){return o[k];}var ch=o[k];if(ch&&typeof ch==='object'){var r=findObjectKey(ch,key,d+1);if(r!=null)return r;}}return null;};" +
-                    "if(root){var green=findObjectKey(root,'greenprice',0);var gp=green&&green.price!=null?num(green.price):num(green);if(gp<1){var green2=findObjectKey(root,'green_price',0);gp=green2&&green2.price!=null?num(green2.price):num(green2);}if(gp<1){var cp=findObjectKey(root,'cardprice',0);gp=cp&&cp.price!=null?num(cp.price):num(cp);}if(gp>=1)card=gp;}" +
-                    "return JSON.stringify({noCard:noCard,card:card,pay:main.subtype==='ya-card'?mainPrice:null,before:before,cart:cart,main:mainPrice,mainSubtype:main.subtype||'',title:meta.title||''});" +
+                    "if(offer){" +
+                    " out.offerFound=true;" +
+                    " var raw=offer.getAttribute('data-zone-data')||''; out.offerData=raw.slice(0,120000);" +
+                    " try{" +
+                    "  var d=JSON.parse(raw);" +
+                    "  var pv=d.price&&d.price.value!=null?Number(d.price.value):-1;" +
+                    "  var dp=d.discountedPrice&&d.discountedPrice.price&&d.discountedPrice.price.value!=null?Number(d.discountedPrice.price.value):-1;" +
+                    "  var gp=d.greenPrice&&d.greenPrice.price&&d.greenPrice.price.value!=null?Number(d.greenPrice.price.value):-1;" +
+                    "  out.noCard=dp>=1?dp:pv;" +
+                    "  out.card=gp>=1?gp:-1;" +
+                    "  out.discount=d.discountedPrice&&d.discountedPrice.percent!=null?Number(d.discountedPrice.percent):-1;" +
+                    " }catch(e){}" +
+                    "}" +
+                    "return JSON.stringify(out);" +
                     "}catch(e){return JSON.stringify({error:String(e)})}})()";
             webView.evaluateJavascript(js, value -> {
                 yandexState = unquote(value);
-                if (jsonNumber(yandexState, "noCard") >= 1 || jsonNumber(yandexState, "card") >= 1 || !jsonString(yandexState, "title").trim().isEmpty()) {
-                    main.postDelayed(() -> extract(originalUrl, callback), 300);
+                yandexAttempts++;
+                boolean ready = jsonNumber(yandexState, "noCard") >= 1
+                        || jsonNumber(yandexState, "card") >= 1
+                        || !jsonString(yandexState, "title").trim().isEmpty();
+                if (ready || yandexAttempts >= 6) {
+                    main.postDelayed(() -> extract(originalUrl, callback), 250);
                 } else {
-                    main.postDelayed(() -> prepareAndExtract(originalUrl, callback), 1200);
+                    main.postDelayed(() -> prepareAndExtract(originalUrl, callback), 900);
                 }
             });
             return;
