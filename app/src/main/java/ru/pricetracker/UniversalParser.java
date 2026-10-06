@@ -69,7 +69,7 @@ public class UniversalParser {
                     "var derived=isPay?(old.regular!=null?old.regular:(old.withoutDiscount!=null&&Object.keys(old).length===1?old.withoutDiscount:null)):(main.subtype?null:mainPrice);" +
                     "var noCard=pop.no_card!=null?pop.no_card:(cart!=null?cart:derived);" +
                     "var before=pop.before!=null?pop.before:((!pop&&isPay)?old.withoutDiscount:null);" +
-                    "var card=-1;" +
+                    "var card=isPay&&mainPrice!=null?mainPrice:-1;" +
                     "var offer=document.querySelector('[data-zone-name=\\\"cpa-offer\\\"]');" +
                     "var raw=offer?offer.getAttribute('data-zone-data')||'':'';var root=null;try{root=raw?JSON.parse(raw):null;}catch(e){}" +
                     "var num=function(v){if(v==null)return -1;if(typeof v==='number')return isFinite(v)&&v>=1?v:-1;if(typeof v==='string'){var n=Number(v.replace(/[^0-9.,]/g,'').replace(',','.'));return isFinite(n)&&n>=1?n:-1;}if(typeof v==='object'){if(v.value!=null){var n=num(v.value);if(n>=1)return n;}if(v.price!=null){var n=num(v.price);if(n>=1)return n;}}return -1;};" +
