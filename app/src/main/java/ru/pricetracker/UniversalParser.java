@@ -74,7 +74,14 @@ public class UniversalParser {
                     "}catch(e){return JSON.stringify({card:-1,title:''})}})()";
             webView.evaluateJavascript(js, value -> {
                 yandexState = unquote(value);
-                main.postDelayed(() -> finishYandexPrices(originalUrl, callback), 900);
+                yandexAttempts++;
+                double cardNow = jsonNumber(yandexState, "card");
+                double titleNow = jsonString(yandexState, "title").trim().isEmpty() ? -1 : 1;
+                if (cardNow >= 1 || yandexAttempts >= 6) {
+                    main.postDelayed(() -> finishYandexPrices(originalUrl, callback), 300);
+                } else {
+                    main.postDelayed(() -> prepareAndExtract(originalUrl, callback), 900);
+                }
             });
             return;
         }
