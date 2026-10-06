@@ -108,9 +108,7 @@ public class UniversalParser {
                 if (validPrice(gray)) {
                     String old = yandexState;
                     double card = jsonNumber(old, "card");
-                    String title = jsonString(old, "title");
-                    yandexState = "{\\"noCard\\":"+gray+",\\"card\\":"+card+",\\"title\\":\\""+title.replace("\\","\\\\").replace("\"","\\\"")+"\\"}";
-                }
+                    yandexState = "{\\"noCard\\":"+gray+",\\"card\\":"+card+"}";
                 extract(originalUrl, callback);
             } catch (Exception e) {
                 extract(originalUrl, callback);
