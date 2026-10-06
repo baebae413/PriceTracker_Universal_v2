@@ -29,6 +29,7 @@ public class UniversalParser {
     private WebView webView;
     private boolean busy;
     private String yandexState = "";
+    private int yandexAttempts;
 
     public UniversalParser(Context context) { this.context = context; }
 
@@ -37,6 +38,7 @@ public class UniversalParser {
         main.post(() -> {
             if (busy) { callback.error(new Exception("Парсер занят")); return; }
             busy = true;
+            yandexAttempts = 0;
             try {
                 webView = new WebView(context);
                 webView.getSettings().setJavaScriptEnabled(true);
@@ -75,7 +77,7 @@ public class UniversalParser {
                     "var cardText='';var cm=cardLabel.exec(bodyText);if(cm){var near=bodyText.slice(cm.index+cm[0].length,Math.min(bodyText.length,cm.index+cm[0].length+350));var pm=near.match(/(?:^|[^\\d])(\\d{1,3}(?:(?:[\\s\\u00a0\\u202f.]\\s*)\\d{3})+|\\d+)(?:[.,]\\d{1,2})?\\s*₽/);if(pm)cardText=pm[1];}" +
                     "return JSON.stringify({noCard:noCard,pay:pay,directCard:directCard,before:before,cart:cart,main:mainPrice,mainSubtype:main.subtype||'',title:meta.title||'',cardText:cardText,bodyText:bodyText.slice(0,60000)});" +
                     "}catch(e){return JSON.stringify({error:String(e)})}})()";
-            webView.evaluateJavascript(js, value -> { yandexState = unquote(value); if (jsonNumber(yandexState, "noCard") >= 1 || jsonNumber(yandexState, "pay") >= 1 || !jsonString(yandexState, "title").trim().isEmpty()) { main.postDelayed(() -> extract(originalUrl, callback), 300); } else { main.postDelayed(() -> prepareAndExtract(originalUrl, callback), 1200); } });
+            webView.evaluateJavascript(js, value -> { yandexState = unquote(value); yandexAttempts++; boolean ready = jsonNumber(yandexState, "noCard") >= 1 || jsonNumber(yandexState, "pay") >= 1 || !jsonString(yandexState, "title").trim().isEmpty(); if (ready || yandexAttempts >= 5) { main.postDelayed(() -> extract(originalUrl, callback), 300); } else { main.postDelayed(() -> prepareAndExtract(originalUrl, callback), 1200); } });
             return;
         }
         if (!isOzon(originalUrl)) { extract(originalUrl, callback); return; }
