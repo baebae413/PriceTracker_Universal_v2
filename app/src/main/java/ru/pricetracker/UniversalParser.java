@@ -62,24 +62,26 @@ public class UniversalParser {
             // We poll briefly, but never block product addition indefinitely.
             String js = "(function(){try{" +
                     "var out={offerFound:false,offerData:'',noCard:-1,card:-1,title:'',discount:-1};" +
-                    "var titleEl=document.querySelector('[data-auto=\\\"productCardTitle\\\"], h1');" +
+                    "var titleEl=document.querySelector('[data-auto=\"productCardTitle\"], h1');" +
                     "out.title=titleEl?(titleEl.innerText||titleEl.textContent||''):'';" +
-                    "var offer=document.querySelector('[data-zone-name=\\\"cpa-offer\\\"]');" +
-                    "if(offer){" +
-                    " out.offerFound=true;" +
-                    " var raw=offer.getAttribute('data-zone-data')||''; out.offerData=raw.slice(0,120000);" +
-                    " try{" +
-                    "  var d=JSON.parse(raw);" +
-                    "  var pv=d.price&&d.price.value!=null?Number(d.price.value):-1;" +
-                    "  var dp=d.discountedPrice&&d.discountedPrice.price&&d.discountedPrice.price.value!=null?Number(d.discountedPrice.price.value):-1;" +
-                    "  var gp=d.greenPrice&&d.greenPrice.price&&d.greenPrice.price.value!=null?Number(d.greenPrice.price.value):-1;" +
-                    "  out.noCard=dp>=1?dp:pv;" +
-                    "  out.card=gp>=1?gp:-1;" +
-                    "  out.discount=d.discountedPrice&&d.discountedPrice.percent!=null?Number(d.discountedPrice.percent):-1;" +
-                    " }catch(e){}" +
+                    "var offer=document.querySelector('[data-zone-name=\"cpa-offer\"]');" +
+                    "var raw=offer?offer.getAttribute('data-zone-data')||'':'';" +
+                    "if(offer){out.offerFound=true;out.offerData=raw.slice(0,180000);}" +
+                    "var root=null;try{root=raw?JSON.parse(raw):null;}catch(e){}" +
+                    "var first=function(v){if(v==null)return -1;if(typeof v==='number')return isFinite(v)&&v>=1?v:-1;if(typeof v==='string'){var n=Number(v.replace(' ',''));return isFinite(n)&&n>=1?n:-1;}if(typeof v==='object'){if(v.value!=null){var n=first(v.value);if(n>=1)return n;}if(v.price!=null){var n=first(v.price);if(n>=1)return n;}}return -1;};" +
+                    "var findKey=function(obj,keys,depth){if(!obj||depth>12)return -1;if(Array.isArray(obj)){for(var i=0;i<obj.length;i++){var n=findKey(obj[i],keys,depth+1);if(n>=1)return n;}return -1;}if(typeof obj!=='object')return -1;" +
+                    "for(var k in obj){if(!Object.prototype.hasOwnProperty.call(obj,k))continue;var kl=String(k).toLowerCase();if(keys.indexOf(kl)>=0){var n=first(obj[k]);if(n>=1)return n;}var child=obj[k];if(child&&typeof child==='object'){var n=findKey(child,keys,depth+1);if(n>=1)return n;}}return -1;};" +
+                    "if(root){" +
+                    " var dp=findKey(root,['discountedprice'],0); var pv=findKey(root,['price'],0); var gp=findKey(root,['greenprice','green_price','cardprice','card_price'],0);" +
+                    " out.noCard=dp>=1?dp:pv; out.card=gp>=1?gp:-1;" +
                     "}" +
+                    "var body=(document.body?document.body.innerText:'').replace(/\\s+/g,' ');" +
+                    "var cardMatch=body.match(/([0-9]{1,3}(?:[\\s\\u00a0\\u202f][0-9]{3})+|[0-9]{2,7})\\s*₽[^\\n]{0,80}(?:карт|Яндекс|плюс)/i);" +
+                    "var all=body.match(/([0-9]{1,3}(?:[\\s\\u00a0\\u202f][0-9]{3})+|[0-9]{2,7})\\s*₽/g)||[];" +
+                    "if(out.card<1&&cardMatch)out.card=Number(cardMatch[1].replace(/[\\s\\u00a0\\u202f]/g,''));" +
+                    "if(out.noCard<1&&all.length)out.noCard=Number(all[0].replace(/[^0-9]/g,''));" +
                     "return JSON.stringify(out);" +
-                    "}catch(e){return JSON.stringify({error:String(e)})}})()";
+                    "}catch(e){return JSON.stringify({error:String(e),noCard:-1,card:-1,title:''})}})()";
             webView.evaluateJavascript(js, value -> {
                 yandexState = unquote(value);
                 yandexAttempts++;
