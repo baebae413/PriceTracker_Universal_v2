@@ -136,6 +136,9 @@ public class UniversalParser {
                 if (isYandexMarket(originalUrl)) {
                     double yp = jsonNumber(yandexState, "noCard");
                     double ycard = jsonNumber(yandexState, "card");
+                    // The existing parser already finds the green/current Yandex price correctly.
+                    // Use that value as the card price if the dedicated DOM extractor missed it.
+                    if (!validPrice(ycard) && validPrice(result.price)) ycard = result.price;
                     if (validPrice(yp)) {
                         result.price = yp;
                         result.noCardPrice = yp;
