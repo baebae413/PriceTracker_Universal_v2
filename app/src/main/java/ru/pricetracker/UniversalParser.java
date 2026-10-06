@@ -57,27 +57,41 @@ public class UniversalParser {
 
     private void prepareAndExtract(String originalUrl, Callback callback) {
         if (isYandexMarket(originalUrl)) {
-            String js = "(function(){try{var C={price:{},buyOption:{},productCardMeta:{},popupInfo:{}};" +
-                    "document.querySelectorAll('noframes[data-apiary=\\\"patch\\\"]').forEach(function(e){try{var d=JSON.parse(e.textContent||'{}');var cc=d.collections||{};" +
-                    "Object.keys(C).forEach(function(n){var x=cc[n];if(x&&typeof x==='object')Object.keys(x).forEach(function(k){C[n][k]=x[k]});});}catch(x){}});" +
-                    "var first=function(o){var a=Object.keys(o);for(var i=0;i<a.length;i++){var v=o[a[i]];if(v&&typeof v==='object')return v;}return {};};" +
-                    "var pr=first(C.price),bo=first(C.buyOption),meta=first(C.productCardMeta),pop={};" +
-                    "Object.keys(C.popupInfo).some(function(k){var v=C.popupInfo[k];if(v&&v.type==='priceDetails'){pop=(v.params||{}).priceDetails||{};return true;}return false;});" +
-                    "var main=pr.mainPrice||{}, mainPrice=main.price?main.price.value:null, isPay=main.subtype==='ya-card';" +
-                    "var cardCandidate=null;var walk=function(o,hasCard){if(!o||typeof o!=='object')return;var here=hasCard||(o.subtype==='ya-card');if(o.price&&typeof o.price==='object'&&o.price.value!=null&&here&&cardCandidate==null)cardCandidate=o.price.value;Object.keys(o).forEach(function(k){var v=o[k];if(typeof v==='object')walk(v,here||(String(k).toLowerCase().indexOf('card')>=0));});};walk(C,false);" +
-                    "var old={}, oo=pr.oldPrices||[];oo.forEach(function(x){if(x&&x.type)old[x.type]=x.price?x.price.value:null;});" +
-                    "var cart=bo.price?bo.price.value:null;" +
-                    "var directCard=null;var offer=document.querySelector('[data-zone-name=\\\"cpa-offer\\\"]');if(offer){try{var od=JSON.parse(offer.getAttribute('data-zone-data')||'{}');var gp=od.greenPrice;if(gp&&gp.price&&gp.price.value!=null)directCard=gp.price.value;}catch(x){}}" +
-                    "var pay=directCard!=null?directCard:(cardCandidate!=null?cardCandidate:(pop.pay!=null?pop.pay:null));" +
-                    "var derived=isPay?(old.regular!=null?old.regular:(old.withoutDiscount!=null&&Object.keys(old).length===1?old.withoutDiscount:null)):(main.subtype?null:mainPrice);" +
-                    "var noCard=pop.no_card!=null?pop.no_card:(cart!=null?cart:derived);" +
-                    "var before=pop.before!=null?pop.before:((!pop&&isPay)?old.withoutDiscount:null);" +
-                    "var bodyText=document.body?document.body.innerText:'';" +
-                    "var cardLabel=/(?:цена\\s*(?:с|по)\\s*карт(?:е|ой)|с\\s*картой|по\\s*карте)(?:\\s+яндекс\\s*(?:пэй|плюс))?/i;" +
-                    "var cardText='';var cm=cardLabel.exec(bodyText);if(cm){var near=bodyText.slice(cm.index+cm[0].length,Math.min(bodyText.length,cm.index+cm[0].length+350));var pm=near.match(/(?:^|[^\\d])(\\d{1,3}(?:(?:[\\s\\u00a0\\u202f.]\\s*)\\d{3})+|\\d+)(?:[.,]\\d{1,2})?\\s*₽/);if(pm)cardText=pm[1];}" +
-                    "return JSON.stringify({noCard:noCard,pay:pay,directCard:directCard,before:before,cart:cart,main:mainPrice,mainSubtype:main.subtype||'',title:meta.title||'',cardText:cardText,bodyText:bodyText.slice(0,60000)});" +
+            // Yandex approach based on the cpa-offer/data-zone-data structure:
+            // one offer contains ordinary/discounted price and greenPrice (Ya-Card).
+            // We poll briefly, but never block product addition indefinitely.
+            String js = "(function(){try{" +
+                    "var out={offerFound:false,offerData:'',noCard:-1,card:-1,title:'',discount:-1};" +
+                    "var titleEl=document.querySelector('[data-auto=\\\"productCardTitle\\\"], h1');" +
+                    "out.title=titleEl?(titleEl.innerText||titleEl.textContent||''):'';" +
+                    "var offer=document.querySelector('[data-zone-name=\\\"cpa-offer\\\"]');" +
+                    "if(offer){" +
+                    " out.offerFound=true;" +
+                    " var raw=offer.getAttribute('data-zone-data')||''; out.offerData=raw.slice(0,120000);" +
+                    " try{" +
+                    "  var d=JSON.parse(raw);" +
+                    "  var pv=d.price&&d.price.value!=null?Number(d.price.value):-1;" +
+                    "  var dp=d.discountedPrice&&d.discountedPrice.price&&d.discountedPrice.price.value!=null?Number(d.discountedPrice.price.value):-1;" +
+                    "  var gp=d.greenPrice&&d.greenPrice.price&&d.greenPrice.price.value!=null?Number(d.greenPrice.price.value):-1;" +
+                    "  out.noCard=dp>=1?dp:pv;" +
+                    "  out.card=gp>=1?gp:-1;" +
+                    "  out.discount=d.discountedPrice&&d.discountedPrice.percent!=null?Number(d.discountedPrice.percent):-1;" +
+                    " }catch(e){}" +
+                    "}" +
+                    "return JSON.stringify(out);" +
                     "}catch(e){return JSON.stringify({error:String(e)})}})()";
-            webView.evaluateJavascript(js, value -> { yandexState = unquote(value); yandexAttempts++; boolean ready = jsonNumber(yandexState, "noCard") >= 1 || jsonNumber(yandexState, "pay") >= 1 || !jsonString(yandexState, "title").trim().isEmpty(); if (ready || yandexAttempts >= 5) { main.postDelayed(() -> extract(originalUrl, callback), 300); } else { main.postDelayed(() -> prepareAndExtract(originalUrl, callback), 1200); } });
+            webView.evaluateJavascript(js, value -> {
+                yandexState = unquote(value);
+                yandexAttempts++;
+                boolean ready = jsonNumber(yandexState, "noCard") >= 1
+                        || jsonNumber(yandexState, "card") >= 1
+                        || !jsonString(yandexState, "title").trim().isEmpty();
+                if (ready || yandexAttempts >= 6) {
+                    main.postDelayed(() -> extract(originalUrl, callback), 250);
+                } else {
+                    main.postDelayed(() -> prepareAndExtract(originalUrl, callback), 900);
+                }
+            });
             return;
         }
         if (!isOzon(originalUrl)) { extract(originalUrl, callback); return; }
@@ -102,14 +116,12 @@ public class UniversalParser {
                 Result result = parse(raw, originalUrl);
                 if (isYandexMarket(originalUrl)) {
                     double yp = jsonNumber(yandexState, "noCard");
-                    double ycard = jsonNumber(yandexState, "pay");
+                    double ycard = jsonNumber(yandexState, "card");
                     if (validPrice(yp)) {
                         result.noCardPrice = yp;
                         result.price = yp;
                     }
-                    double ycardText = num(jsonString(yandexState, "cardText"));
-                    if (validPrice(ycardText)) result.cardPrice = ycardText;
-                    else if (validPrice(ycard)) result.cardPrice = ycard;
+                    if (validPrice(ycard)) result.cardPrice = ycard;
                     String yt = jsonString(yandexState, "title");
                     if (!yt.trim().isEmpty() && !yt.equalsIgnoreCase("%og_title%")) result.name = clean(yt);
                 }
