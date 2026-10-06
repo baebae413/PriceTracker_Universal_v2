@@ -57,32 +57,23 @@ public class UniversalParser {
 
     private void prepareAndExtract(String originalUrl, Callback callback) {
         if (isYandexMarket(originalUrl)) {
-            // Yandex has two prices in different UI states:
-            // 1) the green Yandex Card price is visible initially;
-            // 2) the ordinary price is revealed after pressing "без карты".
-            // Capture the card price BEFORE switching the UI, then capture
-            // the ordinary gray price AFTER the switch.
             String js = "(function(){try{" +
-                    "var out={offerFound:false,offerData:'',noCard:-1,card:-1,title:'',discount:-1};" +
-                    "var titleEl=document.querySelector('[data-auto=\"productCardTitle\"],h1');" +
+                    "var out={card:-1,title:''};" +
+                    "var titleEl=document.querySelector('[data-auto=productCardTitle],h1');" +
                     "out.title=titleEl?(titleEl.innerText||titleEl.textContent||''):'';" +
-                    "var offer=document.querySelector('[data-zone-name=\"cpa-offer\"]');" +
+                    "var offer=document.querySelector('[data-zone-name=cpa-offer]');" +
                     "var raw=offer?offer.getAttribute('data-zone-data')||'':'';" +
-                    "if(offer){out.offerFound=true;out.offerData=raw.slice(0,180000);}" +
                     "var root=null;try{root=raw?JSON.parse(raw):null;}catch(e){}" +
                     "var first=function(v){if(v==null)return -1;if(typeof v==='number')return isFinite(v)&&v>=1?v:-1;if(typeof v==='string'){var n=Number(v.replace(/[^0-9.,]/g,'').replace(',','.'));return isFinite(n)&&n>=1?n:-1;}if(typeof v==='object'){if(v.value!=null){var n=first(v.value);if(n>=1)return n;}if(v.price!=null){var n=first(v.price);if(n>=1)return n;}}return -1;};" +
-                    "var findKey=function(obj,keys,depth){if(!obj||depth>12)return -1;if(Array.isArray(obj)){for(var i=0;i<obj.length;i++){var n=findKey(obj[i],keys,depth+1);if(n>=1)return n;}return -1;}if(typeof obj!=='object')return -1;" +
-                    "for(var k in obj){if(!Object.prototype.hasOwnProperty.call(obj,k))continue;var kl=String(k).toLowerCase();if(keys.indexOf(kl)>=0){var n=first(obj[k]);if(n>=1)return n;}var child=obj[k];if(child&&typeof child==='object'){var n=findKey(child,keys,depth+1);if(n>=1)return n;}}return -1;};" +
-                    "if(root){var gp=findKey(root,['greenprice','green_price','cardprice','card_price'],0);var dp=findKey(root,['discountedprice'],0);var pv=findKey(root,['price'],0);out.card=gp>=1?gp:(dp>=1?dp:-1);}" +
-                    "var priceNum=function(s){var m=String(s||'').match(/([0-9]{1,3}(?:[\\s\\u00a0\\u202f][0-9]{3})+|[0-9]{2,7})\\s*₽/);return m?Number(m[1].replace(/[\\s\\u00a0\\u202f]/g,'')):-1;};" +
-                    "var findColored=function(wantGray){var els=document.querySelectorAll('*');var best=-1;for(var i=0;i<els.length;i++){var e=els[i],t=(e.innerText||'').trim();if(!t||t.length>50||t.indexOf('₽')<0)continue;var p=priceNum(t);if(p<1)continue;var col=getComputedStyle(e).color||'';var parts=col.replace('rgba(','').replace('rgb(','').replace(')','').split(',');if(parts.length<3)continue;var rr=+parts[0],gg=+parts[1],bb=+parts[2];if(wantGray){if(Math.max(rr,gg,bb)-Math.min(rr,gg,bb)<18&&rr<180){best=p;break;}}else{if(gg>rr*1.25&&gg>bb*1.15&&gg>80){best=p;break;}}}return best;};" +
-                    "var initialGray=findColored(true);if(initialGray>=1&&out.card<1)out.noCard=initialGray;" +
-                    "var clickables=document.querySelectorAll('button,[role=button],a,div,span');for(var i=0;i<clickables.length;i++){var tx=(clickables[i].innerText||clickables[i].textContent||'').trim().toLowerCase();if(tx==='без карты'||tx.indexOf('цена без карты')>=0||tx.indexOf('обычная цена')>=0){try{clickables[i].click();}catch(e){}break;}}" +
-                    "return JSON.stringify({phase:'clicked',title:out.title,card:out.card,noCard:out.noCard,offerFound:out.offerFound,offerData:out.offerData});" +
-                    "}catch(e){return JSON.stringify({error:String(e),noCard:-1,card:-1,title:''})}})()";
+                    "var findKey=function(obj,keys,depth){if(!obj||depth>12)return -1;if(Array.isArray(obj)){for(var i=0;i<obj.length;i++){var n=findKey(obj[i],keys,depth+1);if(n>=1)return n;}return -1;}if(typeof obj!=='object')return -1;for(var k in obj){if(!Object.prototype.hasOwnProperty.call(obj,k))continue;var kl=String(k).toLowerCase();if(keys.indexOf(kl)>=0){var n=first(obj[k]);if(n>=1)return n;}var child=obj[k];if(child&&typeof child==='object'){var n=findKey(child,keys,depth+1);if(n>=1)return n;}}return -1;};" +
+                    "if(root){var gp=findKey(root,['greenprice','green_price','cardprice','card_price'],0);var dp=findKey(root,['discountedprice'],0);out.card=gp>=1?gp:(dp>=1?dp:-1);}" +
+                    "window.__ptYandexCard=out.card;window.__ptYandexTitle=out.title;" +
+                    "var clickables=document.querySelectorAll('button,[role=button],a,div,span');" +
+                    "for(var i=0;i<clickables.length;i++){var tx=(clickables[i].innerText||clickables[i].textContent||'').trim().toLowerCase();if(tx==='без карты'||tx.indexOf('цена без карты')>=0||tx.indexOf('обычная цена')>=0){try{clickables[i].click();}catch(e){}break;}}" +
+                    "return JSON.stringify({card:out.card,title:out.title});" +
+                    "}catch(e){return JSON.stringify({card:-1,title:''})}})()";
             webView.evaluateJavascript(js, value -> {
                 yandexState = unquote(value);
-                yandexAttempts++;
                 main.postDelayed(() -> finishYandexPrices(originalUrl, callback), 900);
             });
             return;
@@ -98,22 +89,12 @@ public class UniversalParser {
                 "var priceNum=function(s){var m=String(s||'').match(/([0-9]{1,3}(?:[\\s\\u00a0\\u202f][0-9]{3})+|[0-9]{2,7})\\s*₽/);return m?Number(m[1].replace(/[\\s\\u00a0\\u202f]/g,'')):-1;};" +
                 "var gray=-1,els=document.querySelectorAll('*');" +
                 "for(var i=0;i<els.length;i++){var e=els[i],t=(e.innerText||'').trim();if(!t||t.length>50||t.indexOf('₽')<0)continue;var p=priceNum(t);if(p<1)continue;var col=getComputedStyle(e).color||'';var parts=col.replace('rgba(','').replace('rgb(','').replace(')','').split(',');if(parts.length>=3){var rr=+parts[0],gg=+parts[1],bb=+parts[2];if(Math.max(rr,gg,bb)-Math.min(rr,gg,bb)<18&&rr<180){gray=p;break;}}}" +
-                "if(gray<1){var body=document.body?document.body.innerText:'';var m=body.match(/([0-9]{1,3}(?:[\\s\\u00a0\\u202f][0-9]{3})+|[0-9]{2,7})\\s*₽/g)||[];for(var j=0;j<m.length;j++){var p=priceNum(m[j]);if(p>=1&&p!==Number(JSON.parse('\\"'+''+'\\"')||-999)){gray=p;break;}}}" +
-                "return JSON.stringify({noCard:gray});" +
-                "}catch(e){return JSON.stringify({noCard:-1,error:String(e)})}})()";
+                "if(gray<1){var body=document.body?document.body.innerText:'';var m=body.match(/([0-9]{1,3}(?:[\\s\\u00a0\\u202f][0-9]{3})+|[0-9]{2,7})\\s*₽/g)||[];if(m.length)gray=priceNum(m[0]);}" +
+                "return JSON.stringify({noCard:gray,card:Number(window.__ptYandexCard)||-1,title:window.__ptYandexTitle||''});" +
+                "}catch(e){return JSON.stringify({noCard:-1,card:Number(window.__ptYandexCard)||-1,title:window.__ptYandexTitle||''})}})()";
         webView.evaluateJavascript(js, value -> {
-            try {
-                String after = unquote(value);
-                double gray = jsonNumber(after, "noCard");
-                if (validPrice(gray)) {
-                    String old = yandexState;
-                    double card = jsonNumber(old, "card");
-                    yandexState = "{\"noCard\":"+gray+",\"card\":"+card+"}";
-                }
-                extract(originalUrl, callback);
-            } catch (Exception e) {
-                extract(originalUrl, callback);
-            }
+            yandexState = unquote(value);
+            extract(originalUrl, callback);
         });
     }
 
@@ -122,10 +103,10 @@ public class UniversalParser {
         String js = "(function(){" +
                 "var q=function(s){var e=document.querySelector(s);return e?(e.content||e.getAttribute('content')||e.innerText||''):''};" +
                 "var first=function(s){var e=document.querySelector(s);return e?(e.innerText||e.textContent||''):''};" +
-                "var ld=[];document.querySelectorAll('script[type=\\"application/ld+json\\"]').forEach(function(e){ld.push(e.textContent)});var ozState='';var ozEl=document.querySelector('[id^=\\"state-webPrice\\"]');if(ozEl&&ozEl.dataset)ozState=ozEl.dataset.state||'';" +
+                "var ld=[];document.querySelectorAll('script[type=\\\"application/ld+json\\\"]').forEach(function(e){ld.push(e.textContent)});var ozState='';var ozEl=document.querySelector('[id^=\\\"state-webPrice\\\"]');if(ozEl&&ozEl.dataset)ozState=ozEl.dataset.state||'';" +
                 "var ym=isYandex(document.location.href);" +
-                "if(ym)return JSON.stringify({title:document.title,body:document.body?document.body.innerText.slice(0,60000):'',metaPrice:q('meta[property=\\"product:price:amount\\"]'),itemPrice:q('[itemprop=\\"price\\"]'),ogTitle:q('meta[property=\\"og:title\\"]'),yandexState:(window.__ptYandexState||''),ld:ld.join('\\n')});" +
-                "return JSON.stringify({title:document.title,body:document.body?document.body.innerText:'',html:document.documentElement?document.documentElement.outerHTML:'',metaPrice:q('meta[property=\\"product:price:amount\\"]'),itemPrice:q('[itemprop=\\"price\\"]'),ozonPrice:first('[data-widget=\\"webPrice\\"] .tsHeadline600Large, [data-widget=\\"webPrice\\"] span, [data-widget=\\"webOzonAccountPrice\\"] .tsHeadline600Large'),ozonState:ozState,ozonApi:(window.__ptOzonApi||''),yandexState:(window.__ptYandexState||''),ld:ld.join('\\n')});" +
+                "if(ym)return JSON.stringify({title:document.title,body:document.body?document.body.innerText.slice(0,60000):'',metaPrice:q('meta[property=\\\"product:price:amount\\\"]'),itemPrice:q('[itemprop=\\\"price\\\"]'),ogTitle:q('meta[property=\\\"og:title\\\"]'),yandexState:(window.__ptYandexState||''),ld:ld.join('\\n')});" +
+                "return JSON.stringify({title:document.title,body:document.body?document.body.innerText:'',html:document.documentElement?document.documentElement.outerHTML:'',metaPrice:q('meta[property=\\\"product:price:amount\\\"]'),itemPrice:q('[itemprop=\\\"price\\\"]'),ozonPrice:first('[data-widget=\\\"webPrice\\\"] .tsHeadline600Large, [data-widget=\\\"webPrice\\\"] span, [data-widget=\\\"webOzonAccountPrice\\\"] .tsHeadline600Large'),ozonState:ozState,ozonApi:(window.__ptOzonApi||''),yandexState:(window.__ptYandexState||''),ld:ld.join('\\n')});" +
                 "function isYandex(u){return /market\\.yandex\\./i.test(u)}" +
                 "})()";
         webView.evaluateJavascript(js, value -> {
@@ -135,9 +116,6 @@ public class UniversalParser {
                 if (isYandexMarket(originalUrl)) {
                     double yp = jsonNumber(yandexState, "noCard");
                     double ycard = jsonNumber(yandexState, "card");
-                    // The existing parser already finds the green/current Yandex price correctly.
-                    // Use that value as the card price if the dedicated DOM extractor missed it.
-                    if (!validPrice(ycard) && validPrice(result.price)) ycard = result.price;
                     if (validPrice(yp)) {
                         result.price = yp;
                         result.noCardPrice = yp;
@@ -220,13 +198,13 @@ public class UniversalParser {
 
     private static double structuredOfferPrice(String s) {
         if (s == null) return -1;
-        Matcher offer = Pattern.compile("\\"offers\\"\\s*:\\s*\\{(.{0,3000}?)\\}", Pattern.CASE_INSENSITIVE | Pattern.DOTALL).matcher(s);
+        Matcher offer = Pattern.compile("\\\"offers\\\"\\s*:\\s*\\{(.{0,3000}?)\\}", Pattern.CASE_INSENSITIVE | Pattern.DOTALL).matcher(s);
         while (offer.find()) { String block = offer.group(1); double p = jsonNumber(block, "price"); if (p < 0) p = jsonNumber(block, "lowPrice"); if (p >= 1 && p <= 100000000) return p; }
         return -1;
     }
 
     private static double labeledPrice(String s) {
-        Matcher m = Pattern.compile("(?:price|salePrice|currentPrice|sellingPrice|\\"price\\")\\s*[:=]\\s*\\"?([0-9]{1,9}(?:[.,][0-9]{1,2})?)", Pattern.CASE_INSENSITIVE).matcher(s == null ? "" : s);
+        Matcher m = Pattern.compile("(?:price|salePrice|currentPrice|sellingPrice|\\\"price\\\")\\s*[:=]\\s*\\\"?([0-9]{1,9}(?:[.,][0-9]{1,2})?)", Pattern.CASE_INSENSITIVE).matcher(s == null ? "" : s);
         while (m.find()) { double p = num(m.group(1)); if (p >= 1 && p <= 100000000) return p; }
         return -1;
     }
@@ -253,16 +231,16 @@ public class UniversalParser {
     }
 
     private static double jsonNumber(String s, String key) {
-        Matcher m = Pattern.compile("\\"" + Pattern.quote(key) + "\\"\\s*:\\s*\\"?([0-9]{1,9}(?:[.,][0-9]{1,2})?)", Pattern.CASE_INSENSITIVE).matcher(s == null ? "" : s);
+        Matcher m = Pattern.compile("\\\"" + Pattern.quote(key) + "\\\"\\s*:\\s*\\\"?([0-9]{1,9}(?:[.,][0-9]{1,2})?)", Pattern.CASE_INSENSITIVE).matcher(s == null ? "" : s);
         return m.find() ? num(m.group(1)) : -1;
     }
-    private static String jsonString(String s, String key) { Matcher m = Pattern.compile("\\"" + Pattern.quote(key) + "\\"\\s*:\\s*\\"((?:\\\\.|[^\\"\\\\])*)\\"", Pattern.CASE_INSENSITIVE | Pattern.DOTALL).matcher(s == null ? "" : s); return m.find() ? decode(m.group(1)) : ""; }
+    private static String jsonString(String s, String key) { Matcher m = Pattern.compile("\\\"" + Pattern.quote(key) + "\\\"\\s*:\\s*\\\"((?:\\\\.|[^\\\"\\\\])*)\\\"", Pattern.CASE_INSENSITIVE | Pattern.DOTALL).matcher(s == null ? "" : s); return m.find() ? decode(m.group(1)) : ""; }
     private static String firstNonEmpty(String... values) { for (String s : values) if (s != null && !s.trim().isEmpty()) return s; return ""; }
     private static String clean(String s) { return s == null ? "" : decode(s).replaceAll("\\s+", " ").trim(); }
     private static double num(String s) { try { if (s == null || s.trim().isEmpty()) return -1; return Double.parseDouble(s.trim().replaceAll("[\\s\\u00A0\\u202F]", "").replace(",", ".")); } catch (Exception e) { return -1; } }
-    private static String field(String json, String key) { Matcher m = Pattern.compile("\\"" + Pattern.quote(key) + "\\"\\s*:\\s*\\"((?:\\\\.|[^\\"\\\\])*)\\"", Pattern.DOTALL).matcher(json == null ? "" : json); return m.find() ? decode(m.group(1)) : ""; }
-    private static String unquote(String s) { if (s == null) return ""; if (s.startsWith("\"") && s.endsWith("\"")) { s = s.substring(1, s.length() - 1); s = s.replace("\\"", "\"").replace("\\\", "\").replace("\\n", "\n").replace("\\r", "\r").replace("\\t", "\t"); } return s; }
-    private static String decode(String s) { if (s == null) return ""; return s.replace("\\u002F", "/").replace("\\u0026", "&").replace("\\u003C", "<").replace("\\u003E", ">").replace("\\u0022", "\"").replace("\\"", "\""); }
+    private static String field(String json, String key) { Matcher m = Pattern.compile("\\\"" + Pattern.quote(key) + "\\\"\\s*:\\s*\\\"((?:\\\\.|[^\\\"\\\\])*)\\\"", Pattern.DOTALL).matcher(json == null ? "" : json); return m.find() ? decode(m.group(1)) : ""; }
+    private static String unquote(String s) { if (s == null) return ""; if (s.startsWith("\"") && s.endsWith("\"")) { s = s.substring(1, s.length() - 1); s = s.replace("\\\"", "\"").replace("\\\\", "\\").replace("\\n", "\n").replace("\\r", "\r").replace("\\t", "\t"); } return s; }
+    private static String decode(String s) { if (s == null) return ""; return s.replace("\\u002F", "/").replace("\\u0026", "&").replace("\\u003C", "<").replace("\\u003E", ">").replace("\\u0022", "\"").replace("\\\"", "\""); }
     private static String domain(String url) { try { return new URL(url).getHost(); } catch (Exception e) { return url; } }
     private void fail(Callback callback, String message) { finish(); callback.error(new Exception(message)); }
     private void finish() { busy = false; if (webView != null) { webView.stopLoading(); webView.destroy(); webView = null; } }
