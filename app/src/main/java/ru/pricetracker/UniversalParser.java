@@ -66,7 +66,7 @@ public class UniversalParser {
                     "var root=null;try{root=raw?JSON.parse(raw):null;}catch(e){}" +
                     "var first=function(v){if(v==null)return -1;if(typeof v==='number')return isFinite(v)&&v>=1?v:-1;if(typeof v==='string'){var n=Number(v.replace(/[^0-9.,]/g,'').replace(',','.'));return isFinite(n)&&n>=1?n:-1;}if(typeof v==='object'){if(v.value!=null){var n=first(v.value);if(n>=1)return n;}if(v.price!=null){var n=first(v.price);if(n>=1)return n;}}return -1;};" +
                     "var findKey=function(obj,keys,depth){if(!obj||depth>12)return -1;if(Array.isArray(obj)){for(var i=0;i<obj.length;i++){var n=findKey(obj[i],keys,depth+1);if(n>=1)return n;}return -1;}if(typeof obj!=='object')return -1;for(var k in obj){if(!Object.prototype.hasOwnProperty.call(obj,k))continue;var kl=String(k).toLowerCase();if(keys.indexOf(kl)>=0){var n=first(obj[k]);if(n>=1)return n;}var child=obj[k];if(child&&typeof child==='object'){var n=findKey(child,keys,depth+1);if(n>=1)return n;}}return -1;};" +
-                    "if(root){var gpObj=root&&root.greenPrice?root.greenPrice:null;var directGp=first(gpObj);if(directGp<1&&gpObj&&gpObj.price!=null)directGp=first(gpObj.price);var gp=findKey(root,['greenprice','green_price','cardprice','card_price'],0);out.card=directGp>=1?directGp:(gp>=1?gp:-1);}" +
+                    "if(root){var gp=root&&root.greenPrice&&root.greenPrice.price&&root.greenPrice.price.value!=null?Number(root.greenPrice.price.value):-1;out.card=gp>=1?gp:-1;}" +
                     "window.__ptYandexCard=out.card;window.__ptYandexTitle=out.title;" +
                     "var clickables=document.querySelectorAll('button,[role=button],a,div,span');" +
                     "for(var i=0;i<clickables.length;i++){var tx=(clickables[i].innerText||clickables[i].textContent||'').trim().toLowerCase();if(tx==='без карты'||tx.indexOf('цена без карты')>=0||tx.indexOf('обычная цена')>=0){try{clickables[i].click();}catch(e){}break;}}" +
@@ -74,13 +74,7 @@ public class UniversalParser {
                     "}catch(e){return JSON.stringify({card:-1,title:''})}})()";
             webView.evaluateJavascript(js, value -> {
                 yandexState = unquote(value);
-                yandexAttempts++;
-                double cardNow = jsonNumber(yandexState, "card");
-                if (cardNow >= 1 || yandexAttempts >= 6) {
-                    main.postDelayed(() -> finishYandexPrices(originalUrl, callback), 300);
-                } else {
-                    main.postDelayed(() -> prepareAndExtract(originalUrl, callback), 900);
-                }
+                main.postDelayed(() -> finishYandexPrices(originalUrl, callback), 900)
             });
             return;
         }
