@@ -57,46 +57,45 @@ public class UniversalParser {
 
     private void prepareAndExtract(String originalUrl, Callback callback) {
         if (isYandexMarket(originalUrl)) {
-            // Yandex approach based on the cpa-offer/data-zone-data structure:
-            // one offer contains ordinary/discounted price and greenPrice (Ya-Card).
-            // We poll briefly, but never block product addition indefinitely.
             String js = "(function(){try{" +
-                    "var out={offerFound:false,offerData:'',noCard:-1,card:-1,title:'',discount:-1};" +
-                    "var titleEl=document.querySelector('[data-auto=\\\"productCardTitle\\\"], h1');" +
+                    "var out={card:-1,title:''};" +
+                    "var titleEl=document.querySelector('[data-auto=productCardTitle],h1');" +
                     "out.title=titleEl?(titleEl.innerText||titleEl.textContent||''):'';" +
-                    "var offer=document.querySelector('[data-zone-name=\\\"cpa-offer\\\"]');" +
-                    "if(offer){" +
-                    " out.offerFound=true;" +
-                    " var raw=offer.getAttribute('data-zone-data')||''; out.offerData=raw.slice(0,120000);" +
-                    " try{" +
-                    "  var d=JSON.parse(raw);" +
-                    "  var pv=d.price&&d.price.value!=null?Number(d.price.value):-1;" +
-                    "  var dp=d.discountedPrice&&d.discountedPrice.price&&d.discountedPrice.price.value!=null?Number(d.discountedPrice.price.value):-1;" +
-                    "  var gp=d.greenPrice&&d.greenPrice.price&&d.greenPrice.price.value!=null?Number(d.greenPrice.price.value):-1;" +
-                    "  out.noCard=dp>=1?dp:pv;" +
-                    "  out.card=gp>=1?gp:-1;" +
-                    "  out.discount=d.discountedPrice&&d.discountedPrice.percent!=null?Number(d.discountedPrice.percent):-1;" +
-                    " }catch(e){}" +
-                    "}" +
-                    "return JSON.stringify(out);" +
-                    "}catch(e){return JSON.stringify({error:String(e)})}})()";
+                    "var offer=document.querySelector('[data-zone-name=cpa-offer]');" +
+                    "var raw=offer?offer.getAttribute('data-zone-data')||'':'';" +
+                    "var root=null;try{root=raw?JSON.parse(raw):null;}catch(e){}" +
+                    "var first=function(v){if(v==null)return -1;if(typeof v==='number')return isFinite(v)&&v>=1?v:-1;if(typeof v==='string'){var n=Number(v.replace(/[^0-9.,]/g,'').replace(',','.'));return isFinite(n)&&n>=1?n:-1;}if(typeof v==='object'){if(v.value!=null){var n=first(v.value);if(n>=1)return n;}if(v.price!=null){var n=first(v.price);if(n>=1)return n;}}return -1;};" +
+                    "var findKey=function(obj,keys,depth){if(!obj||depth>12)return -1;if(Array.isArray(obj)){for(var i=0;i<obj.length;i++){var n=findKey(obj[i],keys,depth+1);if(n>=1)return n;}return -1;}if(typeof obj!=='object')return -1;for(var k in obj){if(!Object.prototype.hasOwnProperty.call(obj,k))continue;var kl=String(k).toLowerCase();if(keys.indexOf(kl)>=0){var n=first(obj[k]);if(n>=1)return n;}var child=obj[k];if(child&&typeof child==='object'){var n=findKey(child,keys,depth+1);if(n>=1)return n;}}return -1;};" +
+                    "if(root){var gpObj=root&&root.greenPrice?root.greenPrice:null;var directGp=first(gpObj);if(directGp<1&&gpObj&&gpObj.price!=null)directGp=first(gpObj.price);var gp=findKey(root,['greenprice','green_price','cardprice','card_price'],0);out.card=directGp>=1?directGp:(gp>=1?gp:-1);}" +
+                    "window.__ptYandexCard=out.card;window.__ptYandexTitle=out.title;" +
+                    "var clickables=document.querySelectorAll('button,[role=button],a,div,span');" +
+                    "for(var i=0;i<clickables.length;i++){var tx=(clickables[i].innerText||clickables[i].textContent||'').trim().toLowerCase();if(tx==='без карты'||tx.indexOf('цена без карты')>=0||tx.indexOf('обычная цена')>=0){try{clickables[i].click();}catch(e){}break;}}" +
+                    "return JSON.stringify({card:out.card,title:out.title});" +
+                    "}catch(e){return JSON.stringify({card:-1,title:''})}})()";
             webView.evaluateJavascript(js, value -> {
                 yandexState = unquote(value);
-                yandexAttempts++;
-                boolean ready = jsonNumber(yandexState, "noCard") >= 1
-                        || jsonNumber(yandexState, "card") >= 1
-                        || !jsonString(yandexState, "title").trim().isEmpty();
-                if (ready || yandexAttempts >= 6) {
-                    main.postDelayed(() -> extract(originalUrl, callback), 250);
-                } else {
-                    main.postDelayed(() -> prepareAndExtract(originalUrl, callback), 900);
-                }
+                main.postDelayed(() -> finishYandexPrices(originalUrl, callback), 900);
             });
             return;
         }
         if (!isOzon(originalUrl)) { extract(originalUrl, callback); return; }
         String js = "(function(){try{if(window.__ptOzonApiStarted)return 'started';window.__ptOzonApiStarted=true;fetch('/api/composer-api.bx/page/json/v2?url='+encodeURIComponent(location.pathname+location.search),{credentials:'include'}).then(function(r){return r.text()}).then(function(t){window.__ptOzonApi=t}).catch(function(){window.__ptOzonApi=''});return 'started';}catch(e){return 'error'}})()";
         webView.evaluateJavascript(js, value -> main.postDelayed(() -> extract(originalUrl, callback), 2500));
+    }
+
+    private void finishYandexPrices(String originalUrl, Callback callback) {
+        if (!busy || webView == null) return;
+        String js = "(function(){try{" +
+                "var priceNum=function(s){var m=String(s||'').match(/([0-9]{1,3}(?:[\\s\\u00a0\\u202f][0-9]{3})+|[0-9]{2,7})\\s*₽/);return m?Number(m[1].replace(/[\\s\\u00a0\\u202f]/g,'')):-1;};" +
+                "var gray=-1,els=document.querySelectorAll('*');" +
+                "for(var i=0;i<els.length;i++){var e=els[i],t=(e.innerText||'').trim();if(!t||t.length>50||t.indexOf('₽')<0)continue;var p=priceNum(t);if(p<1)continue;var col=getComputedStyle(e).color||'';var parts=col.replace('rgba(','').replace('rgb(','').replace(')','').split(',');if(parts.length>=3){var rr=+parts[0],gg=+parts[1],bb=+parts[2];if(Math.max(rr,gg,bb)-Math.min(rr,gg,bb)<18&&rr<180){gray=p;break;}}}" +
+                "if(gray<1){var body=document.body?document.body.innerText:'';var m=body.match(/([0-9]{1,3}(?:[\\s\\u00a0\\u202f][0-9]{3})+|[0-9]{2,7})\\s*₽/g)||[];if(m.length)gray=priceNum(m[0]);}" +
+                "return JSON.stringify({noCard:gray,card:Number(window.__ptYandexCard)||-1,title:window.__ptYandexTitle||''});" +
+                "}catch(e){return JSON.stringify({noCard:-1,card:Number(window.__ptYandexCard)||-1,title:window.__ptYandexTitle||''})}})()";
+        webView.evaluateJavascript(js, value -> {
+            yandexState = unquote(value);
+            extract(originalUrl, callback);
+        });
     }
 
     private void extract(String originalUrl, Callback callback) {
