@@ -144,7 +144,7 @@ public class MainActivity extends Activity {
                 refresh();
                 if (url.toLowerCase(Locale.ROOT).contains("market.yandex.")) showDiagnostic(r.diagnostic + "\nDB после записи: noCard=" + noCard + ", card=" + card);
             }
-            @Override public void error(Exception e) { toast("Не удалось прочитать товар: " + e.getMessage()); refresh(); }
+            @Override public void error(Exception e) { if (url.toLowerCase(Locale.ROOT).contains("market.yandex.") && e.getMessage() != null && e.getMessage().startsWith("Yandex DOM")) showDiagnostic(e.getMessage()); else toast("Не удалось прочитать товар: " + e.getMessage()); refresh(); }
         });
     }
 
