@@ -212,9 +212,17 @@ public class MainActivity extends Activity {
     private String formatDate(long time) { return new SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(new Date(time)); }
     private void toast(String s) { Toast.makeText(this, s, Toast.LENGTH_LONG).show(); }
     private void showDiagnostic(String s) {
+        String message = s == null || s.trim().isEmpty() ? "Диагностических данных нет." : s;
+        TextView diagnostic = text(message, 14, Color.BLACK);
+        diagnostic.setTextIsSelectable(true);
+        diagnostic.setTextIsSelectable(true);
+        diagnostic.setPadding(24, 8, 24, 8);
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.addView(diagnostic, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         new AlertDialog.Builder(this)
                 .setTitle("Диагностика Яндекс Маркета")
-                .setMessage(s == null || s.trim().isEmpty() ? "Диагностических данных нет." : s)
+                .setView(scroll)
                 .setPositiveButton("Понятно", null)
                 .show();
     }
