@@ -273,7 +273,8 @@ public class UniversalParser {
     }
 
     private static boolean jsonBoolean(String s, String key) {
-        return Pattern.compile("\\"" + Pattern.quote(key) + "\\"\\s*:\\s*true", Pattern.CASE_INSENSITIVE).matcher(s == null ? "" : s).find();
+        return Pattern.compile("\"" + Pattern.quote(key) + "\"\\s*:\\s*true", Pattern.CASE_INSENSITIVE)
+                .matcher(s == null ? "" : s).find();
     }
     private static double jsonNumber(String s, String key) {
         Matcher m = Pattern.compile("\\\"" + Pattern.quote(key) + "\\\"\\s*:\\s*\\\"?([0-9]{1,9}(?:[.,][0-9]{1,2})?)", Pattern.CASE_INSENSITIVE).matcher(s == null ? "" : s);
