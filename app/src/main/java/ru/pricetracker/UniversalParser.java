@@ -91,18 +91,9 @@ public class UniversalParser {
                     main.postDelayed(() -> prepareAndExtract(originalUrl, callback), 900);
                     return;
                 }
-                String clickJs = "(function(){try{" +
-                        "var clickables=document.querySelectorAll('button,[role=button],a,div,span');" +
-                        "for(var i=0;i<clickables.length;i++){" +
-                        "var tx=(clickables[i].innerText||clickables[i].textContent||'').trim().toLowerCase();" +
-                        "if(tx==='без карты'||tx.indexOf('цена без карты')>=0||tx.indexOf('обычная цена')>=0){" +
-                        "try{clickables[i].click();}catch(e){}break;}" +
-                        "}" +
-                        "return 'ok';" +
-                        "}catch(e){return 'error'}})()";
-                webView.evaluateJavascript(clickJs, value2 ->
-                        main.postDelayed(() -> finishYandexPrices(originalUrl, callback), 900));
-            });
+                // Диагностика №2: намеренно не переключаем страницу на «без карты».
+                // Нужно увидеть исходный DOM одновременно с ценой Pay и обычной ценой.
+                main.postDelayed(() -> finishYandexPrices(originalUrl, callback), 700);
             return;
         }
         if (!isOzon(originalUrl)) { extract(originalUrl, callback); return; }
@@ -113,28 +104,33 @@ public class UniversalParser {
     private void finishYandexPrices(String originalUrl, Callback callback) {
         if (!busy || webView == null) return;
         String js = "(function(){try{" +
-                "var card=Number(window.__ptYandexCard)||-1;" +
-                "var priceNum=function(s){var m=String(s||'').match(/([0-9]{1,3}(?:[\\s\\u00a0\\u202f][0-9]{3})+|[0-9]{2,7})\\s*₽/);return m?Number(m[1].replace(/[\\s\\u00a0\\u202f]/g,'')):-1;};" +
-                "var gray=-1,els=document.querySelectorAll('*');" +
-                "for(var i=0;i<els.length;i++){" +
-                "var e=els[i],t=(e.innerText||'').trim();" +
-                "if(!t||t.length>50||t.indexOf('₽')<0)continue;" +
-                "var p=priceNum(t);if(p<1||p===card)continue;" +
-                "var col=getComputedStyle(e).color||'';" +
-                "var parts=col.replace('rgba(','').replace('rgb(','').replace(')','').split(',');" +
-                "if(parts.length>=3){var rr=+parts[0],gg=+parts[1],bb=+parts[2];" +
-                "if(Math.max(rr,gg,bb)-Math.min(rr,gg,bb)<18&&rr<180){gray=p;break;}}" +
-                "}" +
-                "if(gray<1){" +
-                "var body=document.body?document.body.innerText:'';" +
-                "var ms=body.match(/([0-9]{1,3}(?:[\\s\\u00a0\\u202f][0-9]{3})+|[0-9]{2,7})\\s*₽/g)||[];" +
-                "for(var j=0;j<ms.length;j++){var bp=priceNum(ms[j]);if(bp>=1&&bp!==card){gray=bp;break;}}" +
-                "}" +
-                "return JSON.stringify({noCard:gray,card:card,title:window.__ptYandexTitle||''});" +
-                "}catch(e){return JSON.stringify({noCard:-1,card:Number(window.__ptYandexCard)||-1,title:window.__ptYandexTitle||''})}})()";
+                "var trim=function(s,n){s=String(s||'').replace(/\\s+/g,' ').trim();return s.length>n?s.slice(0,n)+'…':s;};" +
+                "var priceRe=/(?:^|[^0-9])(\\d{1,3}(?:[\\s\\u00a0\\u202f]\\d{3})+|\\d{2,7})\\s*₽/g;" +
+                "var num=function(s){var m=String(s||'').match(/(\\d{1,3}(?:[\\s\\u00a0\\u202f]\\d{3})+|\\d{2,7})\\s*₽/);return m?Number(m[1].replace(/[\\s\\u00a0\\u202f]/g,'')):-1;};" +
+                "var out=[],seen={};" +
+                "var add=function(e,source){if(!e||!e.getBoundingClientRect)return;var t=trim(e.innerText||e.textContent||'',120);if(!t||t.indexOf('₽')<0)return;" +
+                "var ms=t.match(priceRe)||[];if(ms.length===0)return;var p=num(t);if(p<1)return;" +
+                "var cs=getComputedStyle(e);var r=e.getBoundingClientRect();if(cs.display==='none'||cs.visibility==='hidden'||r.width<=0||r.height<=0)return;" +
+                "var par=e.parentElement;var a1=par&&par.parentElement;var a2=a1&&a1.parentElement;" +
+                "var attrs=[];for(var k=0;k<e.attributes.length;k++){var at=e.attributes[k];if(at.name.indexOf('data-')===0)attrs.push(at.name+'='+trim(at.value,180));}" +
+                "var prev=e.previousElementSibling?trim(e.previousElementSibling.innerText||e.previousElementSibling.textContent||'',80):'';" +
+                "var next=e.nextElementSibling?trim(e.nextElementSibling.innerText||e.nextElementSibling.textContent||'',80):'';" +
+                "var key=p+'|'+t+'|'+e.tagName+'|'+(typeof e.className==='string'?e.className:'');if(seen[key])return;seen[key]=1;" +
+                "out.push({source:source,price:p,tag:e.tagName,text:t,id:trim(e.id||'',80),cls:trim(typeof e.className==='string'?e.className:'',180),color:cs.color,font:cs.fontSize+'/'+cs.fontWeight,attrs:attrs.join(' ; '),parent:(par?par.tagName+' .'+trim(typeof par.className==='string'?par.className:'',120)+' | '+trim(par.innerText||par.textContent||'',120):''),anc1:(a1?a1.tagName+' .'+trim(typeof a1.className==='string'?a1.className:'',100)+' | '+trim(a1.innerText||a1.textContent||'',120):''),anc2:(a2?a2.tagName+' .'+trim(typeof a2.className==='string'?a2.className:'',100)+' | '+trim(a2.innerText||a2.textContent||'',120):''),prev:prev,next:next,rect:Math.round(r.top)+','+Math.round(r.left)+','+Math.round(r.width)+','+Math.round(r.height)});};" +
+                "var walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);var node;while(node=walker.nextNode()){if(/₽/.test(node.nodeValue||''))add(node.parentElement,'text');}" +
+                "var els=document.querySelectorAll('*');for(var i=0;i<els.length;i++){var e=els[i],t=e.innerText||e.textContent||'';if(t.indexOf('₽')>=0&&t.length<=120)add(e,'element');if(out.length>=40)break;}" +
+                "var lines=[];for(var j=0;j<out.length;j++){var x=out[j];lines.push('КАНДИДАТ '+(j+1)+': price='+x.price+' ₽; tag='+x.tag+'; text='+x.text+'; class='+x.cls+'; id='+x.id+'; color='+x.color+'; font='+x.font+'; data='+x.attrs+'; parent='+x.parent+'; anc1='+x.anc1+'; anc2='+x.anc2+'; prev='+x.prev+'; next='+x.next+'; rect='+x.rect+'; source='+x.source);}" +
+                "return JSON.stringify({count:out.length,details:lines.join('\\n'),body:trim(document.body?document.body.innerText:'',2500)});" +
+                "}catch(e){return JSON.stringify({count:0,details:'DIAG_ERROR: '+String(e),body:''})}})()";
         webView.evaluateJavascript(js, value -> {
             yandexState = unquote(value);
-            yandexDiag += "\nПосле DOM-сканирования: noCard=" + jsonNumber(yandexState, "noCard") + ", card=" + jsonNumber(yandexState, "card");
+            yandexDiag += "\nDOM-кандидатов с ₽: " + jsonNumber(yandexState, "count");
+            String details = jsonString(yandexState, "details");
+            if (!details.isEmpty()) yandexDiag += "\n" + details;
+            String body = jsonString(yandexState, "body");
+            if (!body.isEmpty()) yandexDiag += "\nBODY (первые 2500 символов):\n" + body;
+            yandexDiag += "\nДиагностика №2: клик по «без карты» НЕ выполнялся.";
+            yandexState = "{\\"noCard\\":-1,\\"card\\":-1,\\"title\\":\\"\\"}";
             extract(originalUrl, callback);
         });
     }
