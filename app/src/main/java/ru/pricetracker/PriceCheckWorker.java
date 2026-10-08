@@ -34,6 +34,7 @@ public class PriceCheckWorker extends Worker {
                         if (r.price >= 1 && r.price <= 100000000) {
                             double noCard = r.noCardPrice >= 1 ? r.noCardPrice : r.price;
                             double card = r.cardPrice >= 1 ? r.cardPrice : -1;
+                            if (product.showCard && card < 1) { latch.countDown(); return; }
                             double selected = product.showCard ? card : noCard;
                             double old = product.showCard ? product.cardPrice : product.noCardPrice;
                             if (selected < old - 0.001) {
