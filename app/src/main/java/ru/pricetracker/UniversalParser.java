@@ -129,21 +129,11 @@ public class UniversalParser {
                 String body = jsonString(yandexState, "body");
                 if (!body.isEmpty()) yandexDiag += "\nBODY:\n" + body;
             }
-            if (!title.trim().isEmpty() && !title.equalsIgnoreCase("%og_title%")) {
-                yandexState = "{\"noCard\":" + (validPrice(noCard) ? noCard : -1) +
-                        ",\"card\":" + (validPrice(card) ? card : -1) +
-                        ",\"title\":\"" + escapeJson(title) + "\"}";
-            } else {
-                yandexState = "{\"noCard\":" + (validPrice(noCard) ? noCard : -1) +
-                        ",\"card\":" + (validPrice(card) ? card : -1) +
-                        ",\"title\":\"\"}";
-            }
+            yandexState = "{\"noCard\":" + (validPrice(noCard) ? noCard : -1) +
+                    ",\"card\":" + (validPrice(card) ? card : -1) +
+                    ",\"title\":\"\"}";
             extract(originalUrl, callback);
         });
-    }
-
-    private static String escapeJson(String s) {
-        return s == null ? "" : s.replace("\\\\", "\\\\\\\\").replace("\"", "\\\\"");
     }
 
     private void extract(String originalUrl, Callback callback) {
