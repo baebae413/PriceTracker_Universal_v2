@@ -102,7 +102,7 @@ public class UniversalParser {
                 "lines.push('=== NEARBY CONTROLS ===');" +
                 "all.slice(0,30).forEach(function(e,i){lines.push('#'+i+' '+short(e));});" +
                 "var target=null;" +
-                "for(var i=0;i<all.length;i++){var e=all[i],t=norm(e.innerText||e.textContent||'').toLowerCase(),al=(attr(e,'aria-label')+' '+attr(e,'title')).toLowerCase();if(!/414|пэй|price|цена/.test(t+' '+al)){target=e;break;}}" +
+                "for(var i=0;i<all.length;i++){var e=all[i],t=norm(e.innerText||e.textContent||'').toLowerCase(),al=(attr(e,'aria-label')+' '+attr(e,'title')).toLowerCase();if(t.indexOf('₽')<0&&!/пэй|price|цена/.test(t+' '+al)){target=e;break;}}" +
                 "var clicked='NONE';" +
                 "if(target){clicked=short(target);try{target.click();}catch(x){try{target.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));}catch(y){}}}" +
                 "return JSON.stringify({before:lines.join('\\n'),clicked:clicked});" +
