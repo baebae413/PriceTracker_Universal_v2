@@ -95,9 +95,9 @@ public class UniversalParser {
                 "var scoreCard=0,scoreNo=0;" +
                 "if(/пэй|яндекс пэй|с картой|зелен(ая|ая) цена|green price/.test(ctx))scoreCard+=8;" +
                 "if(/без карты|обычная цена|цена без карты/.test(ctx))scoreNo+=8;" +
-                "if(auto==='snippet-price-current')scoreCard+=3;
-                if(auto==='snippet-price-old')scoreCard-=7;
-                if(auto==='snippet-price-current' || /ds-valueLine/.test(cls))scoreCard+=1;" +
+                "if(auto==='snippet-price-current')scoreCard+=3;" +
+                "if(auto==='snippet-price-old')scoreCard-=7;" +
+                "if(auto==='snippet-price-current' || /ds-valueLine/.test(cls))scoreCard+=1;" +
                 "if(/пэй/.test(ctx))scoreCard+=3;" +
                 "if(/доставка|промокод|скидк|заказ от|экспресс|маркет 11 окт/.test(ctx))scoreCard-=2;" +
                 "if(/cia-vs|cia-cs/.test(cls)&&/пэй/.test(ctx))scoreCard+=2;" +
