@@ -21,6 +21,7 @@ public class UniversalParser {
         public double price = -1;
         public double noCardPrice = -1;
         public double cardPrice = -1;
+        public String diagnostic = "";
     }
     public interface Callback { void success(Result result); void error(Exception error); }
 
@@ -30,6 +31,8 @@ public class UniversalParser {
     private boolean busy;
     private String yandexState = "";
     private int yandexAttempts;
+    private long yandexStartMs;
+    private String yandexDiag = "";
 
     public UniversalParser(Context context) { this.context = context; }
 
@@ -39,6 +42,8 @@ public class UniversalParser {
             if (busy) { callback.error(new Exception("Парсер занят")); return; }
             busy = true;
             yandexAttempts = 0;
+            yandexStartMs = System.currentTimeMillis();
+            yandexDiag = "";
             try {
                 webView = new WebView(context);
                 webView.getSettings().setJavaScriptEnabled(true);
@@ -66,12 +71,21 @@ public class UniversalParser {
                     "var root=null;try{root=raw?JSON.parse(raw):null;}catch(e){}" +
                     "var gp=root&&root.greenPrice&&root.greenPrice.price&&root.greenPrice.price.value!=null?Number(root.greenPrice.price.value):-1;" +
                     "out.card=gp>=1?gp:-1;" +
+                    "out.offer=!!offer;out.raw=raw.length;out.parsed=!!root;out.green=!!(root&&root.greenPrice);out.greenValue=(root&&root.greenPrice&&root.greenPrice.price&&root.greenPrice.price.value!=null)?String(root.greenPrice.price.value):'';" +
                     "window.__ptYandexCard=out.card;window.__ptYandexTitle=out.title;" +
                     "return JSON.stringify(out);" +
                     "}catch(e){return JSON.stringify({card:-1,title:''})}})()";
             webView.evaluateJavascript(js, value -> {
                 yandexState = unquote(value);
                 double card = jsonNumber(yandexState, "card");
+                String attemptDiag = "Попытка " + (yandexAttempts + 1) + " (" + (System.currentTimeMillis() - yandexStartMs) + " мс): " +
+                        "cpa-offer=" + (jsonBoolean(yandexState, "offer") ? "ДА" : "НЕТ") +
+                        ", data-zone-data=" + jsonNumber(yandexState, "raw") + " симв." +
+                        ", JSON=" + (jsonBoolean(yandexState, "parsed") ? "ДА" : "НЕТ") +
+                        ", greenPrice=" + (jsonBoolean(yandexState, "green") ? "ДА" : "НЕТ") +
+                        ", greenPrice.value=" + (jsonString(yandexState, "greenValue").isEmpty() ? "нет" : jsonString(yandexState, "greenValue")) +
+                        ", card=" + (card >= 1 ? String.valueOf((long)card) : "нет");
+                yandexDiag += (yandexDiag.isEmpty() ? "" : "\n") + attemptDiag;
                 if (card < 1 && yandexAttempts < 5) {
                     yandexAttempts++;
                     main.postDelayed(() -> prepareAndExtract(originalUrl, callback), 900);
@@ -120,6 +134,7 @@ public class UniversalParser {
                 "}catch(e){return JSON.stringify({noCard:-1,card:Number(window.__ptYandexCard)||-1,title:window.__ptYandexTitle||''})}})()";
         webView.evaluateJavascript(js, value -> {
             yandexState = unquote(value);
+            yandexDiag += "\nПосле DOM-сканирования: noCard=" + jsonNumber(yandexState, "noCard") + ", card=" + jsonNumber(yandexState, "card");
             extract(originalUrl, callback);
         });
     }
@@ -149,6 +164,7 @@ public class UniversalParser {
                     if (validPrice(ycard)) result.cardPrice = ycard;
                     String yt = jsonString(yandexState, "title");
                     if (!yt.trim().isEmpty() && !yt.equalsIgnoreCase("%og_title%")) result.name = clean(yt);
+                    result.diagnostic = yandexDiag + "\nJava Result: noCard=" + result.noCardPrice + ", card=" + result.cardPrice + ", price=" + result.price;
                 }
                 if (result.price < 0) throw new Exception("Цена товара не найдена");
                 if (result.name.trim().isEmpty()) result.name = domain(originalUrl);
@@ -256,6 +272,9 @@ public class UniversalParser {
         return candidates.get(0);
     }
 
+    private static boolean jsonBoolean(String s, String key) {
+        return Pattern.compile("\\"" + Pattern.quote(key) + "\\"\\s*:\\s*true", Pattern.CASE_INSENSITIVE).matcher(s == null ? "" : s).find();
+    }
     private static double jsonNumber(String s, String key) {
         Matcher m = Pattern.compile("\\\"" + Pattern.quote(key) + "\\\"\\s*:\\s*\\\"?([0-9]{1,9}(?:[.,][0-9]{1,2})?)", Pattern.CASE_INSENSITIVE).matcher(s == null ? "" : s);
         return m.find() ? num(m.group(1)) : -1;
