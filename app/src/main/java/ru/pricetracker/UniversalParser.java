@@ -79,33 +79,47 @@ public class UniversalParser {
     private void extractYandexPricesFromDom(String originalUrl, Callback callback) {
         if (!busy || webView == null) return;
 
-        // Diagnostic only: do not classify prices or write them to state/DB.
-        // We need the local DOM structure around the two known product prices.
+        // Diagnostic: first capture the initial state, then click "без карты"
+        // and capture the DOM again. No price classification is performed here.
         String js = "(function(){try{" +
-                "var trim=function(s,n){s=String(s||'').replace(/\\s+/g,' ').trim();return s.length>n?s.slice(0,n)+'…':s;};" +
                 "var norm=function(s){return String(s||'').replace(/\\s+/g,' ').trim();};" +
+                "var trim=function(s,n){s=norm(s);return s.length>n?s.slice(0,n)+'…':s;};" +
                 "var visible=function(e){if(!e||!e.getBoundingClientRect)return false;var r=e.getBoundingClientRect(),c=getComputedStyle(e);return c.display!=='none'&&c.visibility!=='hidden'&&c.opacity!=='0'&&r.width>0&&r.height>0;};" +
-                "var priceRe=/(?:^|[^0-9])(\\d{1,3}(?:[\\s\\u00a0\\u202f]\\d{3})+|\\d{2,7})\\s*₽/g;" +
-                "var nums=function(s){var out=[],m;priceRe.lastIndex=0;while((m=priceRe.exec(String(s||'')))!==null){var p=Number(m[1].replace(/[\\s\\u00a0\\u202f]/g,''));if(p>=1&&p<=100000000&&out.indexOf(p)<0)out.push(p);}return out;};" +
                 "var attr=function(e,n){return e&&e.getAttribute?e.getAttribute(n)||'':'';};" +
-                "var desc=function(e){if(!e)return '';var r=e.getBoundingClientRect(),c=getComputedStyle(e),par=e.parentElement;var prev=e.previousElementSibling,next=e.nextElementSibling;return 'TAG='+e.tagName+' CLASS='+trim(e.className||'',160)+' ID='+attr(e,'id')+' AUTO='+attr(e,'data-auto')+' ZONE='+attr(e,'data-zone-name')+' OFFER='+attr(e,'data-offer-id')+' RECT='+[Math.round(r.left),Math.round(r.top),Math.round(r.width),Math.round(r.height)].join(',')+' COLOR='+c.color+' FONT='+c.fontSize+'/'+c.fontWeight+' TEXT='+trim(e.innerText||e.textContent||'',240)+' PARENT='+trim(par?(par.innerText||par.textContent||''):'',300)+' PREV='+trim(prev?(prev.innerText||prev.textContent||''):'',160)+' NEXT='+trim(next?(next.innerText||next.textContent||''):'',160);};" +
-                "var find=function(p){var out=[];document.querySelectorAll('*').forEach(function(e){if(!visible(e))return;var t=norm(e.innerText||e.textContent||'');if(t.indexOf(p+' ₽')>=0&&t.length<=500){var key=e.tagName+'|'+attr(e,'data-auto')+'|'+attr(e,'data-offer-id')+'|'+t;if(!out.some(function(x){return x.key===key;}))out.push({key:key,e:e});}});return out;};" +
-                "var lines=[];" +
-                "['414','531'].forEach(function(p){var arr=find(p);lines.push('=== PRICE '+p+' ₽ : '+arr.length+' elements ===');arr.slice(0,18).forEach(function(x,i){var e=x.e;var p1=e.parentElement,p2=p1&&p1.parentElement,p3=p2&&p2.parentElement;lines.push('#'+i+' '+desc(e));lines.push('  P2='+trim(p2?(p2.innerText||p2.textContent||''):'',400));lines.push('  P3='+trim(p3?(p3.innerText||p3.textContent||''):'',400));});});" +
-                "var offers=[];document.querySelectorAll('[data-auto^=offerContainer_]').forEach(function(e,i){if(i<10)offers.push('#'+i+' '+desc(e));});" +
-                "lines.push('=== OFFER CONTAINERS ===');lines=lines.concat(offers);" +
-                "var uniq={};var all=[];document.querySelectorAll('*').forEach(function(e){if(!visible(e))return;var t=norm(e.innerText||e.textContent||'');if(t.length>500||t.indexOf('₽')<0)return;nums(t).forEach(function(p){var k=p+'|'+attr(e,'data-auto')+'|'+attr(e,'data-offer-id')+'|'+t;if(!uniq[k]){uniq[k]=1;all.push({p:p,t:t,e:e});}});});" +
-                "all.sort(function(a,b){return a.p-b.p;});" +
-                "lines.push('=== UNIQUE VISIBLE PRICE ELEMENTS (first 120) ===');all.slice(0,120).forEach(function(x,i){lines.push('#'+i+' '+x.p+' ₽ | '+desc(x.e));});" +
-                "var body=norm(document.body?document.body.innerText:'');var occ=[];['414','531'].forEach(function(p){var pos=0;while((pos=body.indexOf(p+' ₽',pos))>=0&&occ.length<20){occ.push('BODY '+p+' at '+pos+': '+body.slice(Math.max(0,pos-180),Math.min(body.length,pos+p.length+200)));pos+=p.length+2;}});" +
-                "lines.push('=== BODY OCCURRENCES ===');lines=lines.concat(occ);" +
-                "return JSON.stringify({diagnostic:lines.join('\\n'),count:all.length});" +
-                "}catch(e){return JSON.stringify({diagnostic:'YANDEX_DOM_DIAG_ERROR: '+String(e),count:0})}})()";
+                "var desc=function(e){if(!e)return '';var r=e.getBoundingClientRect(),c=getComputedStyle(e),p=e.parentElement;return 'TAG='+e.tagName+' CLASS='+trim(e.className||'',140)+' AUTO='+attr(e,'data-auto')+' ZONE='+attr(e,'data-zone-name')+' OFFER='+attr(e,'data-offer-id')+' RECT='+[Math.round(r.left),Math.round(r.top),Math.round(r.width),Math.round(r.height)].join(',')+' TEXT='+trim(e.innerText||e.textContent||'',220)+' PARENT='+trim(p?(p.innerText||p.textContent||''):'',260);};" +
+                "var findPrice=function(p){var out=[];document.querySelectorAll('*').forEach(function(e){if(!visible(e))return;var t=norm(e.innerText||e.textContent||'');if(t.indexOf(p+' ₽')<0||t.length>500)return;var key=e.tagName+'|'+attr(e,'data-auto')+'|'+attr(e,'data-offer-id')+'|'+t;if(!out.some(function(x){return x.key===key;}))out.push({key:key,e:e});});return out;};" +
+                "var snap=function(label){var lines=['=== '+label+' ==='];['414','531'].forEach(function(p){var arr=findPrice(p);lines.push('PRICE '+p+' ₽: '+arr.length+' elements');arr.slice(0,12).forEach(function(x,i){lines.push('#'+i+' '+desc(x.e));});});" +
+                "var offers=[];document.querySelectorAll('[data-auto^=offerContainer_]').forEach(function(e,i){if(i<5)offers.push('#'+i+' '+desc(e));});lines.push('OFFER CONTAINERS: '+offers.length);lines=lines.concat(offers);" +
+                "var body=norm(document.body?document.body.innerText:'');['414','531'].forEach(function(p){var pos=0,n=0;while((pos=body.indexOf(p+' ₽',pos))>=0&&n<5){lines.push('BODY '+p+' at '+pos+': '+body.slice(Math.max(0,pos-150),Math.min(body.length,pos+p.length+180)));pos+=p.length+2;n++;}});return lines;};" +
+                "var before=snap('BEFORE CLICK');" +
+                "var buttons=[];document.querySelectorAll('button,[role=button],a,div,span').forEach(function(e){if(!visible(e))return;var t=norm(e.innerText||e.textContent||'').toLowerCase();if(t==='без карты'||t.indexOf('без карты')>=0){buttons.push(e);}});" +
+                "var clicked='NONE';if(buttons.length){var e=buttons[0];clicked=desc(e);try{e.click();}catch(x){try{e.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));}catch(y){}}}" +
+                "return JSON.stringify({before:before.join('\\n'),clicked:clicked,wait:true});" +
+                "}catch(e){return JSON.stringify({before:'DIAG ERROR: '+String(e),clicked:'ERROR',wait:false})}})()";
 
         webView.evaluateJavascript(js, value -> {
-            yandexDiag = jsonString(unquote(value), "diagnostic");
-            yandexState = "{\"noCard\":-1,\"card\":-1,\"title\":\"\"}";
-            extract(originalUrl, callback);
+            String raw = unquote(value);
+            String before = jsonString(raw, "before");
+            String clicked = jsonString(raw, "clicked");
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                String afterJs = "(function(){try{" +
+                        "var norm=function(s){return String(s||'').replace(/\\s+/g,' ').trim();};" +
+                        "var trim=function(s,n){s=norm(s);return s.length>n?s.slice(0,n)+'…':s;};" +
+                        "var visible=function(e){if(!e||!e.getBoundingClientRect)return false;var r=e.getBoundingClientRect(),c=getComputedStyle(e);return c.display!=='none'&&c.visibility!=='hidden'&&c.opacity!=='0'&&r.width>0&&r.height>0;};" +
+                        "var attr=function(e,n){return e&&e.getAttribute?e.getAttribute(n)||'':'';};" +
+                        "var desc=function(e){if(!e)return '';var r=e.getBoundingClientRect(),c=getComputedStyle(e),p=e.parentElement;return 'TAG='+e.tagName+' CLASS='+trim(e.className||'',140)+' AUTO='+attr(e,'data-auto')+' ZONE='+attr(e,'data-zone-name')+' OFFER='+attr(e,'data-offer-id')+' RECT='+[Math.round(r.left),Math.round(r.top),Math.round(r.width),Math.round(r.height)].join(',')+' TEXT='+trim(e.innerText||e.textContent||'',220)+' PARENT='+trim(p?(p.innerText||p.textContent||''):'',260);};" +
+                        "var find=function(p){var out=[];document.querySelectorAll('*').forEach(function(e){if(!visible(e))return;var t=norm(e.innerText||e.textContent||'');if(t.indexOf(p+' ₽')<0||t.length>500)return;var key=e.tagName+'|'+attr(e,'data-auto')+'|'+attr(e,'data-offer-id')+'|'+t;if(!out.some(function(x){return x.key===key;}))out.push({key:key,e:e});});return out;};" +
+                        "var lines=['=== AFTER CLICK ==='];['414','531'].forEach(function(p){var arr=find(p);lines.push('PRICE '+p+' ₽: '+arr.length+' elements');arr.slice(0,12).forEach(function(x,i){lines.push('#'+i+' '+desc(x.e));});});" +
+                        "var body=norm(document.body?document.body.innerText:'');['414','531'].forEach(function(p){var pos=0,n=0;while((pos=body.indexOf(p+' ₽',pos))>=0&&n<8){lines.push('BODY '+p+' at '+pos+': '+body.slice(Math.max(0,pos-180),Math.min(body.length,pos+p.length+220)));pos+=p.length+2;n++;}});" +
+                        "return JSON.stringify({diagnostic:lines.join('\\n')});" +
+                        "}catch(e){return JSON.stringify({diagnostic:'AFTER DIAG ERROR: '+String(e)})}})()";
+                webView.evaluateJavascript(afterJs, value2 -> {
+                    String after = jsonString(unquote(value2), "diagnostic");
+                    yandexDiag = before + "\n=== CLICK TARGET ===\n" + clicked + "\n" + after;
+                    yandexState = "{\"noCard\":-1,\"card\":-1,\"title\":\"\"}";
+                    extract(originalUrl, callback);
+                });
+            }, 1500);
         });
     }
 
