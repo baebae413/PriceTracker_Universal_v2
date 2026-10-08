@@ -87,7 +87,7 @@ public class UniversalParser {
                 "var attr=function(e,n){return e&&e.getAttribute?e.getAttribute(n)||'':'';};" +
                 "var visible=function(e){if(!e||!e.getBoundingClientRect)return false;var r=e.getBoundingClientRect(),c=getComputedStyle(e);return c.display!=='none'&&c.visibility!=='hidden'&&c.opacity!=='0'&&r.width>0&&r.height>0;};" +
                 "var short=function(e){if(!e)return '';var r=e.getBoundingClientRect();return 'TAG='+e.tagName+' CLASS='+trim(e.className||'',100)+' AUTO='+attr(e,'data-auto')+' ROLE='+attr(e,'role')+' ARIAEXP='+attr(e,'aria-expanded')+' ARIALABEL='+attr(e,'aria-label')+' TITLE='+attr(e,'title')+' RECT='+[Math.round(r.left),Math.round(r.top),Math.round(r.width),Math.round(r.height)].join(',')+' TEXT='+trim(e.innerText||e.textContent||'',180)+' HTML='+trim(e.outerHTML||'',500);};" +
-                "var price=document.querySelector('[data-auto="snippet-price-current"]');" +
+                "var price=document.querySelector('[data-auto=\\"snippet-price-current\\"]');" +
                 "var lines=['=== PRICE CONTROL DIAGNOSTIC ==='];" +
                 "lines.push('CURRENT PRICE ELEMENT: '+(price?short(price):'NOT FOUND'));" +
                 "var root=price?price.parentElement:null;" +
@@ -120,7 +120,7 @@ public class UniversalParser {
                         "var visible=function(e){if(!e||!e.getBoundingClientRect)return false;var r=e.getBoundingClientRect(),c=getComputedStyle(e);return c.display!=='none'&&c.visibility!=='hidden'&&c.opacity!=='0'&&r.width>0&&r.height>0;};" +
                         "var short=function(e){if(!e)return '';var r=e.getBoundingClientRect();return 'TAG='+e.tagName+' CLASS='+trim(e.className||'',100)+' AUTO='+attr(e,'data-auto')+' ROLE='+attr(e,'role')+' ARIAEXP='+attr(e,'aria-expanded')+' ARIALABEL='+attr(e,'aria-label')+' TITLE='+attr(e,'title')+' RECT='+[Math.round(r.left),Math.round(r.top),Math.round(r.width),Math.round(r.height)].join(',')+' TEXT='+trim(e.innerText||e.textContent||'',180);};" +
                         "var lines=['=== AFTER CONTROL CLICK ==='];" +
-                        "var prices=[];document.querySelectorAll('[data-auto="snippet-price-current"], [data-auto="snippet-price-old"], [data-auto*="price"]').forEach(function(e){if(visible(e))prices.push(short(e));});" +
+                        "var prices=[];document.querySelectorAll('[data-auto=\\"snippet-price-current\\"], [data-auto=\\"snippet-price-old\\"], [data-auto*=\\"price\\"]').forEach(function(e){if(visible(e))prices.push(short(e));});" +
                         "lines.push('VISIBLE PRICE ELEMENTS: '+prices.length);prices.slice(0,30).forEach(function(e,i){lines.push('#'+i+' '+e);});" +
                         "var body=norm(document.body?document.body.innerText:'');lines.push('BODY HAS ПЭЙ='+body.toLowerCase().indexOf('пэй')>=0+' BODY HAS БЕЗ КАРТЫ='+body.toLowerCase().indexOf('без карты')>=0);" +
                         "var pos=0,n=0;while((pos=body.indexOf('₽',pos))>=0&&n<25){lines.push('RUBLE '+n+' at '+pos+': '+body.slice(Math.max(0,pos-100),Math.min(body.length,pos+140)));pos++;n++;}" +
