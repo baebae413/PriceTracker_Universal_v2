@@ -79,59 +79,32 @@ public class UniversalParser {
     private void extractYandexPricesFromDom(String originalUrl, Callback callback) {
         if (!busy || webView == null) return;
 
+        // Diagnostic only: do not classify prices or write them to state/DB.
+        // We need the local DOM structure around the two known product prices.
         String js = "(function(){try{" +
                 "var trim=function(s,n){s=String(s||'').replace(/\\s+/g,' ').trim();return s.length>n?s.slice(0,n)+'…':s;};" +
-                "var priceRe=/(?:^|[^0-9])(\\d{1,3}(?:[\\s\\u00a0\\u202f]\\d{3})+|\\d{2,7})\\s*₽/g;" +
-                "var num=function(s){var m=String(s||'').match(/(\\d{1,3}(?:[\\s\\u00a0\\u202f]\\d{3})+|\\d{2,7})\\s*₽/);return m?Number(m[1].replace(/[\\s\\u00a0\\u202f]/g,'')):-1;};" +
+                "var norm=function(s){return String(s||'').replace(/\\s+/g,' ').trim();};" +
                 "var visible=function(e){if(!e||!e.getBoundingClientRect)return false;var r=e.getBoundingClientRect(),c=getComputedStyle(e);return c.display!=='none'&&c.visibility!=='hidden'&&c.opacity!=='0'&&r.width>0&&r.height>0;};" +
-                "var norm=function(s){return String(s||'').toLowerCase().replace(/ё/g,'е').replace(/\\s+/g,' ').trim();};" +
-                "var candidates=[];var seen={};" +
-                "var add=function(e){if(!e||!visible(e))return;var t=String(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();if(!t||t.length>220||t.indexOf('₽')<0)return;" +
-                "var ms=t.match(priceRe)||[];if(!ms.length)return;var p=num(t);if(p<1)return;" +
-                "var par=e.parentElement,a1=par&&par.parentElement,a2=a1&&a1.parentElement;" +
-                "var ctx=norm(t+' '+(par?par.innerText||'':'')+' '+(a1?a1.innerText||'':'')+' '+(a2?a2.innerText||'':''));" +
-                "var attrs='';for(var k=0;k<e.attributes.length;k++){var at=e.attributes[k];if(at.name.indexOf('data-')===0)attrs+=' '+at.name+'='+at.value;}" +
-                "var auto=e.getAttribute('data-auto')||'';var zone=e.getAttribute('data-zone-name')||'';var cls=typeof e.className==='string'?e.className:'';" +
-                "var scoreCard=0,scoreNo=0;" +
-                "if(/пэй|яндекс пэй|с картой|зелен(ая|ая) цена|green price/.test(ctx))scoreCard+=8;" +
-                "if(/без карты|обычная цена|цена без карты/.test(ctx))scoreNo+=8;" +
-                "if(auto==='snippet-price-current')scoreCard+=3;" +
-                "if(auto==='snippet-price-old')scoreCard-=7;" +
-                "if(auto==='snippet-price-current' || /ds-valueLine/.test(cls))scoreCard+=1;" +
-                "if(/пэй/.test(ctx))scoreCard+=3;" +
-                "if(/доставка|промокод|скидк|заказ от|экспресс|маркет 11 окт/.test(ctx))scoreCard-=2;" +
-                "if(/cia-vs|cia-cs/.test(cls)&&/пэй/.test(ctx))scoreCard+=2;" +
-                "var key=p+'|'+t+'|'+auto+'|'+zone+'|'+cls;if(seen[key])return;seen[key]=1;" +
-                "candidates.push({p:p,t:t,ctx:ctx,tag:e.tagName,auto:auto,zone:zone,cls:cls,card:scoreCard,no:scoreNo,top:e.getBoundingClientRect().top,left:e.getBoundingClientRect().left});};" +
-                "var els=document.querySelectorAll('*');for(var i=0;i<els.length;i++){var e=els[i],t=e.innerText||e.textContent||'';if(t.indexOf('₽')>=0&&t.length<=220)add(e);}" +
-                "var card=-1,noCard=-1,cardScore=-999,noScore=-999;" +
-                "for(var j=0;j<candidates.length;j++){var x=candidates[j];if(x.card>cardScore&&x.p>=1){cardScore=x.card;card=x.p;}if(x.no>noScore&&x.p>=1){noScore=x.no;noCard=x.p;}}" +
-                "if(card<1){for(var j=0;j<candidates.length;j++){var x=candidates[j];if(x.auto==='snippet-price-current'&&x.p>=1&&/пэй/.test(x.ctx)){card=x.p;break;}}}" +
-                "if(noCard<1){for(var j=0;j<candidates.length;j++){var x=candidates[j];if(/без карты|обычная цена/.test(x.ctx)&&x.p>=1){noCard=x.p;break;}}}" +
-                "if(noCard<1){var bestNo=-999;for(var j=0;j<candidates.length;j++){var x=candidates[j];var sc=0;if(x.auto==='snippet-price-current')sc+=6;if(/ds-valueLine/.test(x.cls))sc+=2;if(/пэй/.test(x.ctx))sc-=6;if(/доставка|промокод|заказ от|экспресс|скидк/.test(x.ctx))sc-=6;if(x.p===card)sc-=20;if(/snippet-price-old/.test(x.auto))sc-=20;if(sc>bestNo&&x.p>=1){bestNo=sc;noCard=x.p;}}}" +
-                "var lines=[];for(var j=0;j<candidates.length&&lines.length<30;j++){var x=candidates[j];if(x.p===card||x.p===noCard||x.card>=6||x.no>=6)lines.push(x.p+' ₽ | cardScore='+x.card+' noCardScore='+x.no+' | '+x.t+' | ctx='+trim(x.ctx,300)+' | auto='+x.auto+' | zone='+x.zone);}" +
-                "return JSON.stringify({card:card,noCard:noCard,cardScore:cardScore,noScore:noScore,count:candidates.length,details:lines.join('\\n'),body:trim(document.body?document.body.innerText:'',1800),title:(document.querySelector('[data-auto=productCardTitle],h1')||{}).innerText||''});" +
-                "}catch(e){return JSON.stringify({card:-1,noCard:-1,count:0,details:'YANDEX_DOM_ERROR: '+String(e),body:'',title:''})}})()";
+                "var priceRe=/(?:^|[^0-9])(\\d{1,3}(?:[\\s\\u00a0\\u202f]\\d{3})+|\\d{2,7})\\s*₽/g;" +
+                "var nums=function(s){var out=[],m;priceRe.lastIndex=0;while((m=priceRe.exec(String(s||'')))!==null){var p=Number(m[1].replace(/[\\s\\u00a0\\u202f]/g,''));if(p>=1&&p<=100000000&&out.indexOf(p)<0)out.push(p);}return out;};" +
+                "var attr=function(e,n){return e&&e.getAttribute?e.getAttribute(n)||'':'';};" +
+                "var desc=function(e){if(!e)return '';var r=e.getBoundingClientRect(),c=getComputedStyle(e),par=e.parentElement;var prev=e.previousElementSibling,next=e.nextElementSibling;return 'TAG='+e.tagName+' CLASS='+trim(e.className||'',160)+' ID='+attr(e,'id')+' AUTO='+attr(e,'data-auto')+' ZONE='+attr(e,'data-zone-name')+' OFFER='+attr(e,'data-offer-id')+' RECT='+[Math.round(r.left),Math.round(r.top),Math.round(r.width),Math.round(r.height)].join(',')+' COLOR='+c.color+' FONT='+c.fontSize+'/'+c.fontWeight+' TEXT='+trim(e.innerText||e.textContent||'',240)+' PARENT='+trim(par?(par.innerText||par.textContent||''):'',300)+' PREV='+trim(prev?(prev.innerText||prev.textContent||''):'',160)+' NEXT='+trim(next?(next.innerText||next.textContent||''):'',160);};" +
+                "var find=function(p){var out=[];document.querySelectorAll('*').forEach(function(e){if(!visible(e))return;var t=norm(e.innerText||e.textContent||'');if(t.indexOf(p+' ₽')>=0&&t.length<=500){var key=e.tagName+'|'+attr(e,'data-auto')+'|'+attr(e,'data-offer-id')+'|'+t;if(!out.some(function(x){return x.key===key;}))out.push({key:key,e:e});}});return out;};" +
+                "var lines=[];" +
+                "['414','531'].forEach(function(p){var arr=find(p);lines.push('=== PRICE '+p+' ₽ : '+arr.length+' elements ===');arr.slice(0,18).forEach(function(x,i){var e=x.e;var p1=e.parentElement,p2=p1&&p1.parentElement,p3=p2&&p2.parentElement;lines.push('#'+i+' '+desc(e));lines.push('  P2='+trim(p2?(p2.innerText||p2.textContent||''):'',400));lines.push('  P3='+trim(p3?(p3.innerText||p3.textContent||''):'',400));});});" +
+                "var offers=[];document.querySelectorAll('[data-auto^=offerContainer_]').forEach(function(e,i){if(i<10)offers.push('#'+i+' '+desc(e));});" +
+                "lines.push('=== OFFER CONTAINERS ===');lines=lines.concat(offers);" +
+                "var uniq={};var all=[];document.querySelectorAll('*').forEach(function(e){if(!visible(e))return;var t=norm(e.innerText||e.textContent||'');if(t.length>500||t.indexOf('₽')<0)return;nums(t).forEach(function(p){var k=p+'|'+attr(e,'data-auto')+'|'+attr(e,'data-offer-id')+'|'+t;if(!uniq[k]){uniq[k]=1;all.push({p:p,t:t,e:e});}});});" +
+                "all.sort(function(a,b){return a.p-b.p;});" +
+                "lines.push('=== UNIQUE VISIBLE PRICE ELEMENTS (first 120) ===');all.slice(0,120).forEach(function(x,i){lines.push('#'+i+' '+x.p+' ₽ | '+desc(x.e));});" +
+                "var body=norm(document.body?document.body.innerText:'');var occ=[];['414','531'].forEach(function(p){var pos=0;while((pos=body.indexOf(p+' ₽',pos))>=0&&occ.length<20){occ.push('BODY '+p+' at '+pos+': '+body.slice(Math.max(0,pos-180),Math.min(body.length,pos+p.length+200)));pos+=p.length+2;}});" +
+                "lines.push('=== BODY OCCURRENCES ===');lines=lines.concat(occ);" +
+                "return JSON.stringify({diagnostic:lines.join('\\n'),count:all.length});" +
+                "}catch(e){return JSON.stringify({diagnostic:'YANDEX_DOM_DIAG_ERROR: '+String(e),count:0})}})()";
 
         webView.evaluateJavascript(js, value -> {
-            yandexState = unquote(value);
-            double noCard = jsonNumber(yandexState, "noCard");
-            double card = jsonNumber(yandexState, "card");
-            String title = jsonString(yandexState, "title");
-            yandexDiag = "Yandex DOM parser: candidates=" + jsonNumber(yandexState, "count") +
-                    ", card=" + (validPrice(card) ? String.valueOf((long)card) : "нет") +
-                    ", noCard=" + (validPrice(noCard) ? String.valueOf((long)noCard) : "нет") +
-                    ", cardScore=" + jsonNumber(yandexState, "cardScore") +
-                    ", noCardScore=" + jsonNumber(yandexState, "noScore");
-            String details = jsonString(yandexState, "details");
-            if (!details.isEmpty()) yandexDiag += "\n" + details;
-            if (!validPrice(card) || !validPrice(noCard)) {
-                String body = jsonString(yandexState, "body");
-                if (!body.isEmpty()) yandexDiag += "\nBODY:\n" + body;
-            }
-            yandexState = "{\"noCard\":" + (validPrice(noCard) ? noCard : -1) +
-                    ",\"card\":" + (validPrice(card) ? card : -1) +
-                    ",\"title\":\"\"}";
+            yandexDiag = jsonString(unquote(value), "diagnostic");
+            yandexState = "{\"noCard\":-1,\"card\":-1,\"title\":\"\"}";
             extract(originalUrl, callback);
         });
     }
