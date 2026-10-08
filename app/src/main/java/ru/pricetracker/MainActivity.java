@@ -142,6 +142,7 @@ public class MainActivity extends Activity {
                 long id = db.add(url, r.name, r.site, noCard, noCard, card);
                 if (id == -1) { db.updateByUrl(url, r.name, r.site, noCard, card); toast("Товар обновлён: " + r.name); } else { toast("Добавлено: " + r.name + " — " + formatPrice(noCard) + " ₽"); }
                 refresh();
+                if (url.toLowerCase(Locale.ROOT).contains("market.yandex.")) showDiagnostic(r.diagnostic + "\nDB после записи: noCard=" + noCard + ", card=" + card);
             }
             @Override public void error(Exception e) { toast("Не удалось прочитать товар: " + e.getMessage()); refresh(); }
         });
@@ -163,7 +164,9 @@ public class MainActivity extends Activity {
                 if (cardMode && card < 1) { checkNext(products, index + 1, down, up, same); return; }
                 double selected = cardMode ? card : noCard;
                 double old = cardMode ? p.cardPrice : p.noCardPrice;
-                String status = selected < old - 0.001 ? "down" : (selected > old + 0.001 ? "up" : "same"); db.updatePrice(p.id, selected, noCard, card, status); checkNext(products, index + 1, down + ("down".equals(status) ? 1 : 0), up + ("up".equals(status) ? 1 : 0), same + ("same".equals(status) ? 1 : 0)); }
+                String status = selected < old - 0.001 ? "down" : (selected > old + 0.001 ? "up" : "same"); db.updatePrice(p.id, selected, noCard, card, status);
+                if (p.url.toLowerCase(Locale.ROOT).contains("market.yandex.")) showDiagnostic(r.diagnostic + "\nDB после записи: noCard=" + noCard + ", card=" + card + ", выбранная=" + selected);
+                checkNext(products, index + 1, down + ("down".equals(status) ? 1 : 0), up + ("up".equals(status) ? 1 : 0), same + ("same".equals(status) ? 1 : 0)); }
             @Override public void error(Exception e) { checkNext(products, index + 1, down, up, same); }
         });
     }
@@ -208,4 +211,11 @@ public class MainActivity extends Activity {
     private String formatPrice(double p) { return Math.abs(p - Math.rint(p)) < 0.001 ? String.format(Locale.US, "%.0f", p) : String.format(Locale.US, "%.2f", p); }
     private String formatDate(long time) { return new SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(new Date(time)); }
     private void toast(String s) { Toast.makeText(this, s, Toast.LENGTH_LONG).show(); }
+    private void showDiagnostic(String s) {
+        new AlertDialog.Builder(this)
+                .setTitle("Диагностика Яндекс Маркета")
+                .setMessage(s == null || s.trim().isEmpty() ? "Диагностических данных нет." : s)
+                .setPositiveButton("Понятно", null)
+                .show();
+    }
 }
