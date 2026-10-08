@@ -133,7 +133,7 @@ public class UniversalParser {
             String body = jsonString(yandexState, "body");
             if (!body.isEmpty()) yandexDiag += "\nBODY (первые 2500 символов):\n" + body;
             yandexDiag += "\nДиагностика №2: клик по «без карты» НЕ выполнялся.";
-            yandexState = "{\\"noCard\\":-1,\\"card\\":-1,\\"title\\":\\"\\"}";
+                        yandexState = "{\"noCard\":-1,\"card\":-1,\"title\":\"\"}";
             extract(originalUrl, callback);
         });
     }
