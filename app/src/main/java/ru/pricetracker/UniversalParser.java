@@ -136,7 +136,7 @@ public class UniversalParser {
                     if (!yt.trim().isEmpty() && !yt.equalsIgnoreCase("%og_title%")) result.name = clean(yt);
                     result.diagnostic = yandexDiag + "\nJava Result: noCard=" + result.noCardPrice + ", card=" + result.cardPrice + ", price=" + result.price;
                 }
-                if (result.price < 0) throw new Exception("Цена товара не найдена");
+                if (result.price < 0) throw new Exception(isYandexMarket(originalUrl) && !yandexDiag.isEmpty() ? yandexDiag : "Цена товара не найдена");
                 if (result.name.trim().isEmpty()) result.name = domain(originalUrl);
                 finish(); callback.success(result);
             } catch (Exception e) { finish(); callback.error(e); }
