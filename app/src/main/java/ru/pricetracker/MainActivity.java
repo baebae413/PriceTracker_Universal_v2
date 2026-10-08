@@ -160,7 +160,8 @@ public class MainActivity extends Activity {
             @Override public void success(UniversalParser.Result r) { boolean cardMode = p.showCard;
                 double noCard = r.noCardPrice >= 1 ? r.noCardPrice : r.price;
                 double card = r.cardPrice >= 1 ? r.cardPrice : -1;
-                double selected = cardMode && card >= 1 ? card : noCard;
+                if (cardMode && card < 1) { checkNext(products, index + 1, down, up, same); return; }
+                double selected = cardMode ? card : noCard;
                 double old = cardMode ? p.cardPrice : p.noCardPrice;
                 String status = selected < old - 0.001 ? "down" : (selected > old + 0.001 ? "up" : "same"); db.updatePrice(p.id, selected, noCard, card, status); checkNext(products, index + 1, down + ("down".equals(status) ? 1 : 0), up + ("up".equals(status) ? 1 : 0), same + ("same".equals(status) ? 1 : 0)); }
             @Override public void error(Exception e) { checkNext(products, index + 1, down, up, same); }
