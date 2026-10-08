@@ -62,38 +62,10 @@ public class UniversalParser {
 
     private void prepareAndExtract(String originalUrl, Callback callback) {
         if (isYandexMarket(originalUrl)) {
-            String js = "(function(){try{" +
-                    "var out={card:-1,title:''};" +
-                    "var titleEl=document.querySelector('[data-auto=productCardTitle],h1');" +
-                    "out.title=titleEl?(titleEl.innerText||titleEl.textContent||''):'';" +
-                    "var offer=document.querySelector('[data-zone-name=cpa-offer]');" +
-                    "var raw=offer?offer.getAttribute('data-zone-data')||'':'';" +
-                    "var root=null;try{root=raw?JSON.parse(raw):null;}catch(e){}" +
-                    "var gp=root&&root.greenPrice&&root.greenPrice.price&&root.greenPrice.price.value!=null?Number(root.greenPrice.price.value):-1;" +
-                    "out.card=gp>=1?gp:-1;" +
-                    "out.offer=!!offer;out.raw=raw.length;out.parsed=!!root;out.green=!!(root&&root.greenPrice);out.greenValue=(root&&root.greenPrice&&root.greenPrice.price&&root.greenPrice.price.value!=null)?String(root.greenPrice.price.value):'';" +
-                    "window.__ptYandexCard=out.card;window.__ptYandexTitle=out.title;" +
-                    "return JSON.stringify(out);" +
-                    "}catch(e){return JSON.stringify({card:-1,title:''})}})()";
-            webView.evaluateJavascript(js, value -> {
-                yandexState = unquote(value);
-                double card = jsonNumber(yandexState, "card");
-                String attemptDiag = "Попытка " + (yandexAttempts + 1) + " (" + (System.currentTimeMillis() - yandexStartMs) + " мс): " +
-                        "cpa-offer=" + (jsonBoolean(yandexState, "offer") ? "ДА" : "НЕТ") +
-                        ", data-zone-data=" + jsonNumber(yandexState, "raw") + " симв." +
-                        ", JSON=" + (jsonBoolean(yandexState, "parsed") ? "ДА" : "НЕТ") +
-                        ", greenPrice=" + (jsonBoolean(yandexState, "green") ? "ДА" : "НЕТ") +
-                        ", greenPrice.value=" + (jsonString(yandexState, "greenValue").isEmpty() ? "нет" : jsonString(yandexState, "greenValue")) +
-                        ", card=" + (card >= 1 ? String.valueOf((long)card) : "нет");
-                yandexDiag += (yandexDiag.isEmpty() ? "" : "\n") + attemptDiag;
-                if (card < 1 && yandexAttempts < 5) {
-                    yandexAttempts++;
-                    main.postDelayed(() -> prepareAndExtract(originalUrl, callback), 900);
-                    return;
-                }
-                // Диагностика №2: не переключаем страницу на «без карты».
-                main.postDelayed(() -> finishYandexPrices(originalUrl, callback), 700);
-            });
+            // Yandex Market no longer exposes the old cpa-offer/greenPrice structure
+            // in this WebView. Read the prices from the visible DOM and classify them
+            // by the surrounding UI text instead.
+            main.postDelayed(() -> extractYandexPricesFromDom(originalUrl, callback), 300);
             return;
         }
         if (!isOzon(originalUrl)) {
@@ -104,38 +76,71 @@ public class UniversalParser {
         webView.evaluateJavascript(js, value -> main.postDelayed(() -> extract(originalUrl, callback), 2500));
     }
 
-    private void finishYandexPrices(String originalUrl, Callback callback) {
+    private void extractYandexPricesFromDom(String originalUrl, Callback callback) {
         if (!busy || webView == null) return;
+
         String js = "(function(){try{" +
                 "var trim=function(s,n){s=String(s||'').replace(/\\s+/g,' ').trim();return s.length>n?s.slice(0,n)+'…':s;};" +
                 "var priceRe=/(?:^|[^0-9])(\\d{1,3}(?:[\\s\\u00a0\\u202f]\\d{3})+|\\d{2,7})\\s*₽/g;" +
                 "var num=function(s){var m=String(s||'').match(/(\\d{1,3}(?:[\\s\\u00a0\\u202f]\\d{3})+|\\d{2,7})\\s*₽/);return m?Number(m[1].replace(/[\\s\\u00a0\\u202f]/g,'')):-1;};" +
-                "var out=[],seen={};" +
-                "var add=function(e,source){if(!e||!e.getBoundingClientRect)return;var t=trim(e.innerText||e.textContent||'',120);if(!t||t.indexOf('₽')<0)return;" +
-                "var ms=t.match(priceRe)||[];if(ms.length===0)return;var p=num(t);if(p<1)return;" +
-                "var cs=getComputedStyle(e);var r=e.getBoundingClientRect();if(cs.display==='none'||cs.visibility==='hidden'||r.width<=0||r.height<=0)return;" +
-                "var par=e.parentElement;var a1=par&&par.parentElement;var a2=a1&&a1.parentElement;" +
-                "var attrs=[];for(var k=0;k<e.attributes.length;k++){var at=e.attributes[k];if(at.name.indexOf('data-')===0)attrs.push(at.name+'='+trim(at.value,180));}" +
-                "var prev=e.previousElementSibling?trim(e.previousElementSibling.innerText||e.previousElementSibling.textContent||'',80):'';" +
-                "var next=e.nextElementSibling?trim(e.nextElementSibling.innerText||e.nextElementSibling.textContent||'',80):'';" +
-                "var key=p+'|'+t+'|'+e.tagName+'|'+(typeof e.className==='string'?e.className:'');if(seen[key])return;seen[key]=1;" +
-                "out.push({source:source,price:p,tag:e.tagName,text:t,id:trim(e.id||'',80),cls:trim(typeof e.className==='string'?e.className:'',180),color:cs.color,font:cs.fontSize+'/'+cs.fontWeight,attrs:attrs.join(' ; '),parent:(par?par.tagName+' .'+trim(typeof par.className==='string'?par.className:'',120)+' | '+trim(par.innerText||par.textContent||'',120):''),anc1:(a1?a1.tagName+' .'+trim(typeof a1.className==='string'?a1.className:'',100)+' | '+trim(a1.innerText||a1.textContent||'',120):''),anc2:(a2?a2.tagName+' .'+trim(typeof a2.className==='string'?a2.className:'',100)+' | '+trim(a2.innerText||a2.textContent||'',120):''),prev:prev,next:next,rect:Math.round(r.top)+','+Math.round(r.left)+','+Math.round(r.width)+','+Math.round(r.height)});};" +
-                "var walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);var node;while(node=walker.nextNode()){if(/₽/.test(node.nodeValue||''))add(node.parentElement,'text');}" +
-                "var els=document.querySelectorAll('*');for(var i=0;i<els.length;i++){var e=els[i],t=e.innerText||e.textContent||'';if(t.indexOf('₽')>=0&&t.length<=120)add(e,'element');if(out.length>=40)break;}" +
-                "var lines=[];for(var j=0;j<out.length;j++){var x=out[j];lines.push('КАНДИДАТ '+(j+1)+': price='+x.price+' ₽; tag='+x.tag+'; text='+x.text+'; class='+x.cls+'; id='+x.id+'; color='+x.color+'; font='+x.font+'; data='+x.attrs+'; parent='+x.parent+'; anc1='+x.anc1+'; anc2='+x.anc2+'; prev='+x.prev+'; next='+x.next+'; rect='+x.rect+'; source='+x.source);}" +
-                "return JSON.stringify({count:out.length,details:lines.join('\\n'),body:trim(document.body?document.body.innerText:'',2500)});" +
-                "}catch(e){return JSON.stringify({count:0,details:'DIAG_ERROR: '+String(e),body:''})}})()";
+                "var visible=function(e){if(!e||!e.getBoundingClientRect)return false;var r=e.getBoundingClientRect(),c=getComputedStyle(e);return c.display!=='none'&&c.visibility!=='hidden'&&c.opacity!=='0'&&r.width>0&&r.height>0;};" +
+                "var norm=function(s){return String(s||'').toLowerCase().replace(/ё/g,'е').replace(/\\s+/g,' ').trim();};" +
+                "var candidates=[];var seen={};" +
+                "var add=function(e){if(!e||!visible(e))return;var t=String(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();if(!t||t.length>220||t.indexOf('₽')<0)return;" +
+                "var ms=t.match(priceRe)||[];if(!ms.length)return;var p=num(t);if(p<1)return;" +
+                "var par=e.parentElement,a1=par&&par.parentElement,a2=a1&&a1.parentElement;" +
+                "var ctx=norm(t+' '+(par?par.innerText||'':'')+' '+(a1?a1.innerText||'':'')+' '+(a2?a2.innerText||'':''));" +
+                "var attrs='';for(var k=0;k<e.attributes.length;k++){var at=e.attributes[k];if(at.name.indexOf('data-')===0)attrs+=' '+at.name+'='+at.value;}" +
+                "var auto=e.getAttribute('data-auto')||'';var zone=e.getAttribute('data-zone-name')||'';var cls=typeof e.className==='string'?e.className:'';" +
+                "var scoreCard=0,scoreNo=0;" +
+                "if(/пэй|яндекс пэй|с картой|зелен(ая|ая) цена|green price/.test(ctx))scoreCard+=8;" +
+                "if(/без карты|обычная цена|цена без карты/.test(ctx))scoreNo+=8;" +
+                "if(auto==='snippet-price-current')scoreCard+=3;" +
+                "if(/пэй/.test(ctx))scoreCard+=3;" +
+                "if(/доставка|промокод|скидк|заказ от|экспресс|маркет 11 окт/.test(ctx))scoreCard-=2;" +
+                "if(/cia-vs|cia-cs/.test(cls)&&/пэй/.test(ctx))scoreCard+=2;" +
+                "var key=p+'|'+t+'|'+auto+'|'+zone+'|'+cls;if(seen[key])return;seen[key]=1;" +
+                "candidates.push({p:p,t:t,ctx:ctx,tag:e.tagName,auto:auto,zone:zone,cls:cls,card:scoreCard,no:scoreNo,top:e.getBoundingClientRect().top,left:e.getBoundingClientRect().left});};" +
+                "var els=document.querySelectorAll('*');for(var i=0;i<els.length;i++){var e=els[i],t=e.innerText||e.textContent||'';if(t.indexOf('₽')>=0&&t.length<=220)add(e);}" +
+                "var card=-1,noCard=-1,cardScore=-999,noScore=-999;" +
+                "for(var j=0;j<candidates.length;j++){var x=candidates[j];if(x.card>cardScore&&x.p>=1){cardScore=x.card;card=x.p;}if(x.no>noScore&&x.p>=1){noScore=x.no;noCard=x.p;}}" +
+                "if(card<1){for(var j=0;j<candidates.length;j++){var x=candidates[j];if(x.auto==='snippet-price-current'&&x.p>=1&&/пэй/.test(x.ctx)){card=x.p;break;}}}" +
+                "if(noCard<1){for(var j=0;j<candidates.length;j++){var x=candidates[j];if(/без карты|обычная цена/.test(x.ctx)&&x.p>=1){noCard=x.p;break;}}}" +
+                "var lines=[];for(var j=0;j<candidates.length&&lines.length<30;j++){var x=candidates[j];if(x.p===card||x.p===noCard||x.card>=6||x.no>=6)lines.push(x.p+' ₽ | cardScore='+x.card+' noCardScore='+x.no+' | '+x.t+' | ctx='+trim(x.ctx,300)+' | auto='+x.auto+' | zone='+x.zone);}" +
+                "return JSON.stringify({card:card,noCard:noCard,cardScore:cardScore,noScore:noScore,count:candidates.length,details:lines.join('\\n'),body:trim(document.body?document.body.innerText:'',1800),title:(document.querySelector('[data-auto=productCardTitle],h1')||{}).innerText||''});" +
+                "}catch(e){return JSON.stringify({card:-1,noCard:-1,count:0,details:'YANDEX_DOM_ERROR: '+String(e),body:'',title:''})}})()";
+
         webView.evaluateJavascript(js, value -> {
             yandexState = unquote(value);
-            yandexDiag += "\nDOM-кандидатов с ₽: " + jsonNumber(yandexState, "count");
+            double noCard = jsonNumber(yandexState, "noCard");
+            double card = jsonNumber(yandexState, "card");
+            String title = jsonString(yandexState, "title");
+            yandexDiag = "Yandex DOM parser: candidates=" + jsonNumber(yandexState, "count") +
+                    ", card=" + (validPrice(card) ? String.valueOf((long)card) : "нет") +
+                    ", noCard=" + (validPrice(noCard) ? String.valueOf((long)noCard) : "нет") +
+                    ", cardScore=" + jsonNumber(yandexState, "cardScore") +
+                    ", noCardScore=" + jsonNumber(yandexState, "noScore");
             String details = jsonString(yandexState, "details");
             if (!details.isEmpty()) yandexDiag += "\n" + details;
-            String body = jsonString(yandexState, "body");
-            if (!body.isEmpty()) yandexDiag += "\nBODY (первые 2500 символов):\n" + body;
-            yandexDiag += "\nДиагностика №2: клик по «без карты» НЕ выполнялся.";
-            yandexState = "{\"noCard\":-1,\"card\":-1,\"title\":\"\"}";
+            if (!validPrice(card) || !validPrice(noCard)) {
+                String body = jsonString(yandexState, "body");
+                if (!body.isEmpty()) yandexDiag += "\nBODY:\n" + body;
+            }
+            if (!title.trim().isEmpty() && !title.equalsIgnoreCase("%og_title%")) {
+                yandexState = "{\"noCard\":" + (validPrice(noCard) ? noCard : -1) +
+                        ",\"card\":" + (validPrice(card) ? card : -1) +
+                        ",\"title\":\"" + escapeJson(title) + "\"}";
+            } else {
+                yandexState = "{\"noCard\":" + (validPrice(noCard) ? noCard : -1) +
+                        ",\"card\":" + (validPrice(card) ? card : -1) +
+                        ",\"title\":\"\"}";
+            }
             extract(originalUrl, callback);
         });
+    }
+
+    private static String escapeJson(String s) {
+        return s == null ? "" : s.replace("\\\\", "\\\\\\\\").replace("\"", "\\\\"");
     }
 
     private void extract(String originalUrl, Callback callback) {
