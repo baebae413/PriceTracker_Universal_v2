@@ -91,12 +91,15 @@ public class UniversalParser {
                     main.postDelayed(() -> prepareAndExtract(originalUrl, callback), 900);
                     return;
                 }
-                // Диагностика №2: намеренно не переключаем страницу на «без карты».
-                // Нужно увидеть исходный DOM одновременно с ценой Pay и обычной ценой.
+                // Диагностика №2: не переключаем страницу на «без карты».
                 main.postDelayed(() -> finishYandexPrices(originalUrl, callback), 700);
+            });
             return;
         }
-        if (!isOzon(originalUrl)) { extract(originalUrl, callback); return; }
+        if (!isOzon(originalUrl)) {
+            extract(originalUrl, callback);
+            return;
+        }
         String js = "(function(){try{if(window.__ptOzonApiStarted)return 'started';window.__ptOzonApiStarted=true;fetch('/api/composer-api.bx/page/json/v2?url='+encodeURIComponent(location.pathname+location.search),{credentials:'include'}).then(function(r){return r.text()}).then(function(t){window.__ptOzonApi=t}).catch(function(){window.__ptOzonApi=''});return 'started';}catch(e){return 'error'}})()";
         webView.evaluateJavascript(js, value -> main.postDelayed(() -> extract(originalUrl, callback), 2500));
     }
