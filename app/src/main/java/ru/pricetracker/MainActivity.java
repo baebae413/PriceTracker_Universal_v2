@@ -215,7 +215,6 @@ public class MainActivity extends Activity {
         String message = s == null || s.trim().isEmpty() ? "Диагностических данных нет." : s;
         TextView diagnostic = text(message, 14, Color.BLACK);
         diagnostic.setTextIsSelectable(true);
-        diagnostic.setTextIsSelectable(true);
         diagnostic.setPadding(24, 8, 24, 8);
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
