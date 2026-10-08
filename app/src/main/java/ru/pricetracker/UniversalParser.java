@@ -95,7 +95,9 @@ public class UniversalParser {
                 "var scoreCard=0,scoreNo=0;" +
                 "if(/пэй|яндекс пэй|с картой|зелен(ая|ая) цена|green price/.test(ctx))scoreCard+=8;" +
                 "if(/без карты|обычная цена|цена без карты/.test(ctx))scoreNo+=8;" +
-                "if(auto==='snippet-price-current')scoreCard+=3;" +
+                "if(auto==='snippet-price-current')scoreCard+=3;
+                if(auto==='snippet-price-old')scoreCard-=7;
+                if(auto==='snippet-price-current' || /ds-valueLine/.test(cls))scoreCard+=1;" +
                 "if(/пэй/.test(ctx))scoreCard+=3;" +
                 "if(/доставка|промокод|скидк|заказ от|экспресс|маркет 11 окт/.test(ctx))scoreCard-=2;" +
                 "if(/cia-vs|cia-cs/.test(cls)&&/пэй/.test(ctx))scoreCard+=2;" +
@@ -105,7 +107,8 @@ public class UniversalParser {
                 "var card=-1,noCard=-1,cardScore=-999,noScore=-999;" +
                 "for(var j=0;j<candidates.length;j++){var x=candidates[j];if(x.card>cardScore&&x.p>=1){cardScore=x.card;card=x.p;}if(x.no>noScore&&x.p>=1){noScore=x.no;noCard=x.p;}}" +
                 "if(card<1){for(var j=0;j<candidates.length;j++){var x=candidates[j];if(x.auto==='snippet-price-current'&&x.p>=1&&/пэй/.test(x.ctx)){card=x.p;break;}}}" +
-                "if(noCard<1){for(var j=0;j<candidates.length;j++){var x=candidates[j];if(/без карты|обычная цена/.test(x.ctx)&&x.p>=1){noCard=x.p;break;}}}" +
+                "if(noCard<1){for(var j=0;j<candidates.length;j++){var x=candidates[j];if(/без карты|обычная цена/.test(x.ctx)&&x.p>=1){noCard=x.p;break;}}}
+                if(noCard<1){var bestNo=-999;for(var j=0;j<candidates.length;j++){var x=candidates[j];var sc=0;if(x.auto==='snippet-price-current')sc+=6;if(/ds-valueLine/.test(x.cls))sc+=2;if(/пэй/.test(x.ctx))sc-=6;if(/доставка|промокод|заказ от|экспресс|скидк/.test(x.ctx))sc-=6;if(x.p===card)sc-=20;if(/snippet-price-old/.test(x.auto))sc-=20;if(sc>bestNo&&x.p>=1){bestNo=sc;noCard=x.p;}}}" +
                 "var lines=[];for(var j=0;j<candidates.length&&lines.length<30;j++){var x=candidates[j];if(x.p===card||x.p===noCard||x.card>=6||x.no>=6)lines.push(x.p+' ₽ | cardScore='+x.card+' noCardScore='+x.no+' | '+x.t+' | ctx='+trim(x.ctx,300)+' | auto='+x.auto+' | zone='+x.zone);}" +
                 "return JSON.stringify({card:card,noCard:noCard,cardScore:cardScore,noScore:noScore,count:candidates.length,details:lines.join('\\n'),body:trim(document.body?document.body.innerText:'',1800),title:(document.querySelector('[data-auto=productCardTitle],h1')||{}).innerText||''});" +
                 "}catch(e){return JSON.stringify({card:-1,noCard:-1,count:0,details:'YANDEX_DOM_ERROR: '+String(e),body:'',title:''})}})()";
