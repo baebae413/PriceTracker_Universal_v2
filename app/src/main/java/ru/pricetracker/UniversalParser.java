@@ -79,60 +79,34 @@ public class UniversalParser {
     private void extractYandexPricesFromDom(String originalUrl, Callback callback) {
         if (!busy || webView == null) return;
 
-        // Diagnostic only: inspect the real control next to the current Yandex Pay price.
-        // We do not classify prices or write them to the DB in this test.
+        // Read both Yandex prices from the productSnippet's data-zone-data.
+        // additionalPrices contains priceType=yaBank and priceType=withDiscount.
         String js = "(function(){try{" +
                 "var norm=function(s){return String(s||'').replace(/\\s+/g,' ').trim();};" +
-                "var trim=function(s,n){s=norm(s);return s.length>n?s.slice(0,n)+'…':s;};" +
-                "var attr=function(e,n){return e&&e.getAttribute?e.getAttribute(n)||'':'';};" +
-                "var visible=function(e){if(!e||!e.getBoundingClientRect)return false;var r=e.getBoundingClientRect(),c=getComputedStyle(e);return c.display!=='none'&&c.visibility!=='hidden'&&c.opacity!=='0'&&r.width>0&&r.height>0;};" +
-                "var short=function(e){if(!e)return '';var r=e.getBoundingClientRect();return 'TAG='+e.tagName+' CLASS='+trim(e.className||'',100)+' AUTO='+attr(e,'data-auto')+' ROLE='+attr(e,'role')+' ARIAEXP='+attr(e,'aria-expanded')+' ARIALABEL='+attr(e,'aria-label')+' TITLE='+attr(e,'title')+' RECT='+[Math.round(r.left),Math.round(r.top),Math.round(r.width),Math.round(r.height)].join(',')+' TEXT='+trim(e.innerText||e.textContent||'',180)+' HTML='+trim(e.outerHTML||'',500);};" +
-                "var price=document.querySelector('[data-auto=\\"snippet-price-current\\"]');" +
-                "var lines=['=== PRICE CONTROL DIAGNOSTIC ==='];" +
-                "lines.push('CURRENT PRICE ELEMENT: '+(price?short(price):'NOT FOUND'));" +
-                "var root=price?price.parentElement:null;" +
-                "for(var level=0;root&&level<5;level++,root=root.parentElement){" +
-                " lines.push('--- ANCESTOR '+level+' ---');" +
-                " lines.push(short(root));" +
-                " var els=root.querySelectorAll('button,[role=button],[aria-expanded],a,svg');" +
-                " var seen=[];" +
-                " for(var i=0;i<els.length&&i<20;i++){var e=els[i];if(!visible(e))continue;var s=short(e);if(seen.indexOf(s)>=0)continue;seen.push(s);lines.push('CONTROL '+i+': '+s);}" +
+                "var wanted='';try{wanted=new URL(location.href).searchParams.get('do-waremd5')||'';}catch(e){}" +
+                "var pathId='';try{var m=location.pathname.match(/\\/(\\d+)(?:\\/|$)/);pathId=m?m[1]:'';}catch(e){}" +
+                "var nodes=document.querySelectorAll('[data-zone-data]');var best=null;var bestScore=-1;var examined=0;" +
+                "for(var i=0;i<nodes.length;i++){" +
+                "var el=nodes[i],raw=el.getAttribute('data-zone-data');if(!raw)continue;var d;try{d=JSON.parse(raw);}catch(e){continue;}" +
+                "var arr=d&&d.additionalPrices;if(!Array.isArray(arr))continue;var card=-1,noCard=-1;" +
+                "for(var j=0;j<arr.length;j++){var a=arr[j]||{};var typ=String(a.priceType||'').toLowerCase();var val=Number(a.priceValue);if(!isFinite(val)||val<1)continue;if(typ==='yabank')card=val;else if(typ==='withdiscount')noCard=val;}" +
+                "if(card<1||noCard<1)continue;examined++;var score=0;var ware=String(d.wareId||'');var osku=String(d.oskuId||'');" +
+                "if(wanted&&ware===wanted)score+=100;if(pathId&&osku===pathId)score+=80;" +
+                "var title=norm(d.title||'');if(title&&norm(document.title).toLowerCase().indexOf(title.toLowerCase())>=0)score+=20;" +
+                "if(el.getAttribute('data-zone-name')==='productSnippet')score+=5;" +
+                "var offer=el.querySelector('[data-auto^=\"offerContainer_\"]');if(offer&&wanted&&offer.getAttribute('data-offer-id')===wanted)score+=100;" +
+                "if(!best||score>bestScore){best={card:card,noCard:noCard,title:title,ware:ware,osku:osku,score:score,zone:el.getAttribute('data-zone-name')||'',data:raw.slice(0,1800)};bestScore=score;}" +
                 "}" +
-                "var all=[];document.querySelectorAll('button,[role=button],[aria-expanded],a').forEach(function(e){if(!visible(e))return;var r=e.getBoundingClientRect();if(price){var pr=price.getBoundingClientRect();if(Math.abs(r.top-pr.top)<100&&Math.abs(r.left-pr.left)<180){all.push(e);}}});" +
-                "lines.push('=== NEARBY CONTROLS ===');" +
-                "all.slice(0,30).forEach(function(e,i){lines.push('#'+i+' '+short(e));});" +
-                "var target=null;" +
-                "for(var i=0;i<all.length;i++){var e=all[i],t=norm(e.innerText||e.textContent||'').toLowerCase(),al=(attr(e,'aria-label')+' '+attr(e,'title')).toLowerCase();if(t.indexOf('₽')<0&&!/пэй|price|цена/.test(t+' '+al)){target=e;break;}}" +
-                "var clicked='NONE';" +
-                "if(target){clicked=short(target);try{target.click();}catch(x){try{target.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));}catch(y){}}}" +
-                "return JSON.stringify({before:lines.join('\\n'),clicked:clicked});" +
-                "}catch(e){return JSON.stringify({before:'DIAG ERROR: '+String(e),clicked:'ERROR'})}})()";
+                "var title=best&&best.title?best.title:(document.querySelector('meta[property=\"og:title\"]')||{}).content||document.title;" +
+                "var state={noCard:best?best.noCard:-1,card:best?best.card:-1,title:title};" +
+                "return JSON.stringify({state:JSON.stringify(state),diag:'Yandex additionalPrices: candidates='+examined+', matched='+(best?'YES':'NO')+', score='+(best?best.score:-1)+', zone='+(best?best.zone:'')+', wareId='+(best?best.ware:'')+', oskuId='+(best?best.osku:'')+', card(yaBank)='+(best?best.card:'-1')+', noCard(withDiscount)='+(best?best.noCard:'-1')+', data='+ (best?best.data:'not found')});" +
+                "}catch(e){return JSON.stringify({state:'',diag:'Yandex additionalPrices ERROR: '+String(e)})}})()";
 
         webView.evaluateJavascript(js, value -> {
             String raw = unquote(value);
-            String before = jsonString(raw, "before");
-            String clicked = jsonString(raw, "clicked");
-            main.postDelayed(() -> {
-                String afterJs = "(function(){try{" +
-                        "var norm=function(s){return String(s||'').replace(/\\s+/g,' ').trim();};" +
-                        "var trim=function(s,n){s=norm(s);return s.length>n?s.slice(0,n)+'…':s;};" +
-                        "var attr=function(e,n){return e&&e.getAttribute?e.getAttribute(n)||'':'';};" +
-                        "var visible=function(e){if(!e||!e.getBoundingClientRect)return false;var r=e.getBoundingClientRect(),c=getComputedStyle(e);return c.display!=='none'&&c.visibility!=='hidden'&&c.opacity!=='0'&&r.width>0&&r.height>0;};" +
-                        "var short=function(e){if(!e)return '';var r=e.getBoundingClientRect();return 'TAG='+e.tagName+' CLASS='+trim(e.className||'',100)+' AUTO='+attr(e,'data-auto')+' ROLE='+attr(e,'role')+' ARIAEXP='+attr(e,'aria-expanded')+' ARIALABEL='+attr(e,'aria-label')+' TITLE='+attr(e,'title')+' RECT='+[Math.round(r.left),Math.round(r.top),Math.round(r.width),Math.round(r.height)].join(',')+' TEXT='+trim(e.innerText||e.textContent||'',180);};" +
-                        "var lines=['=== AFTER CONTROL CLICK ==='];" +
-                        "var prices=[];document.querySelectorAll('[data-auto=\\"snippet-price-current\\"], [data-auto=\\"snippet-price-old\\"], [data-auto*=\\"price\\"]').forEach(function(e){if(visible(e))prices.push(short(e));});" +
-                        "lines.push('VISIBLE PRICE ELEMENTS: '+prices.length);prices.slice(0,30).forEach(function(e,i){lines.push('#'+i+' '+e);});" +
-                        "var body=norm(document.body?document.body.innerText:'');lines.push('BODY HAS ПЭЙ='+body.toLowerCase().indexOf('пэй')>=0+' BODY HAS БЕЗ КАРТЫ='+body.toLowerCase().indexOf('без карты')>=0);" +
-                        "var pos=0,n=0;while((pos=body.indexOf('₽',pos))>=0&&n<25){lines.push('RUBLE '+n+' at '+pos+': '+body.slice(Math.max(0,pos-100),Math.min(body.length,pos+140)));pos++;n++;}" +
-                        "return JSON.stringify({after:lines.join('\\n')});" +
-                        "}catch(e){return JSON.stringify({after:'AFTER DIAG ERROR: '+String(e)})}})()";
-                webView.evaluateJavascript(afterJs, value2 -> {
-                    String after=jsonString(unquote(value2),"after");
-                    yandexDiag=before+"\n=== CLICKED CONTROL ===\n"+clicked+"\n"+after;
-                    yandexState="{\"noCard\":-1,\"card\":-1,\"title\":\"\"}";
-                    extract(originalUrl, callback);
-                });
-            },1500);
+            yandexState = jsonString(raw, "state");
+            yandexDiag = jsonString(raw, "diag");
+            extract(originalUrl, callback);
         });
     }
 
